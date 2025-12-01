@@ -147,7 +147,7 @@ export default class RumdlPlugin extends Plugin {
     // Command: Lint current file
     this.addCommand({
       id: 'lint-current-file',
-      name: 'Lint current file',
+      name: 'Check file',
       editorCallback: (editor: Editor, view: MarkdownView) => {
         this.lintEditor(editor);
       },
@@ -156,7 +156,7 @@ export default class RumdlPlugin extends Plugin {
     // Command: Fix all issues
     this.addCommand({
       id: 'fix-all-issues',
-      name: 'Fix all issues in current file',
+      name: 'Fix all',
       editorCallback: (editor: Editor, view: MarkdownView) => {
         this.fixAll(editor);
       },
@@ -165,7 +165,7 @@ export default class RumdlPlugin extends Plugin {
     // Command: Show available rules
     this.addCommand({
       id: 'show-rules',
-      name: 'Show available rules',
+      name: 'Rules',
       callback: () => {
         this.showRules();
       },
