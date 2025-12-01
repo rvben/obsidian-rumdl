@@ -1,0 +1,16 @@
+# Build output
+main.js
+*.wasm
+
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# npm
+package-lock.json

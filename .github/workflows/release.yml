@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          MANIFEST_VERSION=$(jq -r '.version' manifest.json)
+          PACKAGE_VERSION=$(jq -r '.version' package.json)
+
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Error: Tag version ($TAG_VERSION) does not match manifest.json ($MANIFEST_VERSION)"
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Error: Tag version ($TAG_VERSION) does not match package.json ($PACKAGE_VERSION)"
+            exit 1
+          fi
+
+          echo "Version validated: $TAG_VERSION"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Copy WASM file
+        run: cp node_modules/rumdl-wasm/rumdl_lib_bg.wasm .
+
+      - name: Verify build artifacts
+        run: |
+          for file in main.js manifest.json styles.css versions.json rumdl_lib_bg.wasm; do
+            if [ ! -f "$file" ]; then
+              echo "Error: Required file $file not found"
+              exit 1
+            fi
+            echo "Found: $file ($(wc -c < "$file") bytes)"
+          done
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            main.js
+            manifest.json
+            styles.css
+            versions.json
+            rumdl_lib_bg.wasm
+          generate_release_notes: true

@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-rumdl",
+  "name": "rumdl Markdown Linter",
+  "version": "0.0.1",
+  "minAppVersion": "0.15.0",
+  "description": "Lint markdown files with rumdl - a fast markdown linter",
+  "author": "rvben",
+  "authorUrl": "https://github.com/rvben",
+  "isDesktopOnly": false
+}

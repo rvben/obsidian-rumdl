@@ -1,0 +1,45 @@
+.rumdl-results {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.rumdl-warning {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.rumdl-warning:hover {
+  background: var(--background-modifier-hover);
+}
+
+.rumdl-warning-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.rumdl-fixable {
+  color: var(--text-accent);
+  font-size: 0.85em;
+}
+
+.rumdl-message {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.rumdl-rules {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.rumdl-rule {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rumdl-rule:last-child {
+  border-bottom: none;
+}
