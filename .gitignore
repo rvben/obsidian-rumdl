@@ -12,5 +12,5 @@ node_modules/
 # OS
 .DS_Store
 
-# npm
-package-lock.json
+# npm debug logs
+npm-debug.log*
