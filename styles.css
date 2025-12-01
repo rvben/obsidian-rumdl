@@ -43,3 +43,40 @@
 .rumdl-rule:last-child {
   border-bottom: none;
 }
+
+/* Status bar styles */
+.rumdl-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.rumdl-status:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.rumdl-status-icon {
+  display: flex;
+  align-items: center;
+}
+
+.rumdl-status-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rumdl-status.rumdl-clean .rumdl-status-icon {
+  color: var(--color-green);
+}
+
+.rumdl-status.rumdl-issues .rumdl-status-icon {
+  color: var(--color-orange);
+}
+
+.rumdl-status-text {
+  font-size: var(--font-ui-smaller);
+}

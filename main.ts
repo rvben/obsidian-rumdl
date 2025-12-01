@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import * as rumdlWasm from 'rumdl-wasm';
 import initWasm, { initSync, lint_markdown, apply_all_fixes, apply_fix, get_version, get_available_rules } from 'rumdl-wasm';
 
@@ -30,6 +30,61 @@ export default class RumdlPlugin extends Plugin {
   statusBarItem: HTMLElement;
   wasmReady = false;
 
+  updateStatusBar(issueCount: number | null) {
+    if (!this.statusBarItem) return;
+
+    this.statusBarItem.empty();
+    const iconEl = this.statusBarItem.createSpan({ cls: 'rumdl-status-icon' });
+    const textEl = this.statusBarItem.createSpan({ cls: 'rumdl-status-text' });
+
+    if (issueCount === null) {
+      setIcon(iconEl, 'file-check');
+      textEl.setText('ready');
+    } else if (issueCount === 0) {
+      setIcon(iconEl, 'check-circle');
+      this.statusBarItem.addClass('rumdl-clean');
+      this.statusBarItem.removeClass('rumdl-issues');
+    } else {
+      setIcon(iconEl, 'alert-circle');
+      textEl.setText(String(issueCount));
+      this.statusBarItem.addClass('rumdl-issues');
+      this.statusBarItem.removeClass('rumdl-clean');
+    }
+  }
+
+  showStatusMenu(e: MouseEvent) {
+    const menu = new Menu();
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+    menu.addItem((item) =>
+      item
+        .setTitle('📋 View issues')
+        .setDisabled(!view)
+        .onClick(() => {
+          if (view) this.lintEditor(view.editor);
+        })
+    );
+
+    menu.addItem((item) =>
+      item
+        .setTitle('🔧 Fix all issues')
+        .setDisabled(!view)
+        .onClick(() => {
+          if (view) this.fixAll(view.editor);
+        })
+    );
+
+    menu.addSeparator();
+
+    menu.addItem((item) =>
+      item
+        .setTitle('📖 Available rules')
+        .onClick(() => this.showRules())
+    );
+
+    menu.showAtMouseEvent(e);
+  }
+
   async onload() {
     await this.loadSettings();
 
@@ -56,7 +111,37 @@ export default class RumdlPlugin extends Plugin {
     // Status bar
     if (this.settings.showStatusBar) {
       this.statusBarItem = this.addStatusBarItem();
-      this.statusBarItem.setText('rumdl: ready');
+      this.statusBarItem.addClass('rumdl-status');
+      this.statusBarItem.addEventListener('click', (e) => this.showStatusMenu(e));
+    }
+
+    // Lint active file on load and when switching files
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          this.lintEditor(view.editor, true);
+        } else {
+          this.updateStatusBar(null);
+        }
+      })
+    );
+
+    // Lint on editor changes (debounced)
+    let debounceTimer: number;
+    this.registerEvent(
+      this.app.workspace.on('editor-change', (editor: Editor) => {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+          this.lintEditor(editor, true);
+        }, 500);
+      })
+    );
+
+    // Lint current file if one is already open
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (activeView) {
+      this.lintEditor(activeView.editor, true);
     }
 
     // Command: Lint current file
@@ -122,11 +207,7 @@ export default class RumdlPlugin extends Plugin {
     const result = lint_markdown(content);
     const warnings: RumdlWarning[] = JSON.parse(result);
 
-    // Update status bar
-    if (this.statusBarItem) {
-      const fixable = warnings.filter(w => w.fix).length;
-      this.statusBarItem.setText(`rumdl: ${warnings.length} issues (${fixable} fixable)`);
-    }
+    this.updateStatusBar(warnings.length);
 
     if (warnings.length === 0) {
       if (!quiet) {
@@ -157,11 +238,13 @@ export default class RumdlPlugin extends Plugin {
       const result = lint_markdown(fixed);
       const remaining: RumdlWarning[] = JSON.parse(result);
 
-      if (this.statusBarItem) {
-        this.statusBarItem.setText(`rumdl: ${remaining.length} issues remaining`);
-      }
+      this.updateStatusBar(remaining.length);
 
-      new Notice(`Fixed issues. ${remaining.length} issues remaining.`);
+      if (remaining.length === 0) {
+        new Notice('All issues fixed');
+      } else {
+        new Notice(`Fixed. ${remaining.length} remaining.`);
+      }
     } else {
       new Notice('No auto-fixable issues found');
     }
