@@ -1,6 +1,7 @@
 import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
-import * as rumdlWasm from 'rumdl-wasm';
-import initWasm, { initSync, lint_markdown, apply_all_fixes, apply_fix, get_version, get_available_rules } from 'rumdl-wasm';
+import { initSync, lint_markdown, apply_all_fixes, get_version, get_available_rules } from 'rumdl-wasm';
+import { EditorView } from '@codemirror/view';
+import { linter, Diagnostic } from '@codemirror/lint';
 
 interface RumdlWarning {
   line: number;
@@ -9,8 +10,10 @@ interface RumdlWarning {
   rule_name?: string;
   rule?: string;
   fix?: {
-    start: number;
-    end: number;
+    range: {
+      start: number;
+      end: number;
+    };
     replacement: string;
   };
 }
@@ -24,6 +27,91 @@ const DEFAULT_SETTINGS: RumdlPluginSettings = {
   lintOnSave: false,
   showStatusBar: true,
 };
+
+// Global reference to the plugin instance for the linter
+let pluginInstance: RumdlPlugin | null = null;
+
+// Create a linter extension using @codemirror/lint
+const rumdlLinter = linter((view: EditorView) => {
+  if (!pluginInstance || !pluginInstance.wasmReady) {
+    return [];
+  }
+
+  const content = view.state.doc.toString();
+  const result = lint_markdown(content);
+  const warnings: RumdlWarning[] = JSON.parse(result);
+
+  // Update status bar
+  pluginInstance.updateStatusBar(warnings.length);
+
+  // Convert rumdl warnings to CodeMirror diagnostics
+  const diagnostics: Diagnostic[] = [];
+
+  for (const warning of warnings) {
+    // Convert line/column to document position
+    if (warning.line >= 1 && warning.line <= view.state.doc.lines) {
+      const line = view.state.doc.line(warning.line);
+      const from = line.from + Math.max(0, (warning.column || 1) - 1);
+      const to = line.to;
+
+      const diagnostic: Diagnostic = {
+        from,
+        to,
+        severity: 'warning',
+        message: warning.message,
+        source: warning.rule_name || warning.rule || 'rumdl',
+      };
+
+      // Add fix action if available
+      if (warning.fix) {
+        const fixStart = warning.fix.range.start;
+        const fixEnd = warning.fix.range.end;
+        const fixReplacement = warning.fix.replacement;
+
+        diagnostic.actions = [{
+          name: 'Fix',
+          apply: (view: EditorView) => {
+            view.dispatch({
+              changes: { from: fixStart, to: fixEnd, insert: fixReplacement }
+            });
+          }
+        }];
+      }
+
+      diagnostics.push(diagnostic);
+    }
+  }
+
+  // Add a "Fix All" footer diagnostic if there are multiple fixable issues
+  const fixableCount = warnings.filter(w => w.fix).length;
+  if (fixableCount > 1 && diagnostics.length > 0) {
+    // Use the same position as the first diagnostic for the "Fix All" footer
+    const firstDiag = diagnostics[0];
+    diagnostics.push({
+      from: firstDiag.from,
+      to: firstDiag.to,
+      severity: 'hint' as const,
+      message: '',
+      source: `${fixableCount} fixable issues`,
+      actions: [{
+        name: 'Fix All',
+        apply: (view: EditorView) => {
+          const currentContent = view.state.doc.toString();
+          const fixed = apply_all_fixes(currentContent);
+          if (fixed !== currentContent) {
+            view.dispatch({
+              changes: { from: 0, to: currentContent.length, insert: fixed }
+            });
+          }
+        }
+      }]
+    });
+  }
+
+  return diagnostics;
+}, {
+  delay: 500,
+});
 
 export default class RumdlPlugin extends Plugin {
   settings: RumdlPluginSettings;
@@ -88,6 +176,9 @@ export default class RumdlPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    // Set global plugin instance for the linter
+    pluginInstance = this;
+
     // Initialize WASM module by loading the .wasm file from plugin directory
     try {
       const pluginDir = this.manifest.dir;
@@ -115,36 +206,20 @@ export default class RumdlPlugin extends Plugin {
       this.statusBarItem.addEventListener('click', (e) => this.showStatusMenu(e));
     }
 
-    // Lint active file on load and when switching files
+    // Register CodeMirror linter extension (provides underlines + hover tooltips)
+    this.registerEditorExtension([rumdlLinter]);
+
+    // Update status bar when switching files
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (view) {
-          this.lintEditor(view.editor, true);
-        } else {
+        if (!view) {
           this.updateStatusBar(null);
         }
       })
     );
 
-    // Lint on editor changes (debounced)
-    let debounceTimer: number;
-    this.registerEvent(
-      this.app.workspace.on('editor-change', (editor: Editor) => {
-        window.clearTimeout(debounceTimer);
-        debounceTimer = window.setTimeout(() => {
-          this.lintEditor(editor, true);
-        }, 500);
-      })
-    );
-
-    // Lint current file if one is already open
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (activeView) {
-      this.lintEditor(activeView.editor, true);
-    }
-
-    // Command: Lint current file
+    // Command: Lint current file (shows modal with results)
     this.addCommand({
       id: 'lint-current-file',
       name: 'Check file',
@@ -173,21 +248,11 @@ export default class RumdlPlugin extends Plugin {
 
     // Settings tab
     this.addSettingTab(new RumdlSettingTab(this.app, this));
-
-    // Lint on file change (if enabled)
-    if (this.settings.lintOnSave) {
-      this.registerEvent(
-        this.app.vault.on('modify', (file) => {
-          const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-          if (view && view.file === file) {
-            this.lintEditor(view.editor, true);
-          }
-        })
-      );
-    }
   }
 
-  onunload() {}
+  onunload() {
+    pluginInstance = null;
+  }
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());

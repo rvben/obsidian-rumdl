@@ -80,3 +80,174 @@
 .rumdl-status-text {
   font-size: var(--font-ui-smaller);
 }
+
+/* Editor line highlighting */
+.rumdl-warning-line {
+  background-color: rgba(255, 180, 0, 0.12);
+  border-left: 3px solid var(--color-orange);
+}
+
+/* Dark theme adjustments */
+.theme-dark .rumdl-warning-line {
+  background-color: rgba(255, 180, 0, 0.08);
+}
+
+/* Hover tooltip styles */
+.rumdl-tooltip {
+  padding: 8px 12px;
+  max-width: 400px;
+  font-size: var(--font-ui-small);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  color: var(--text-normal);
+}
+
+.rumdl-tooltip-item {
+  margin-bottom: 8px;
+}
+
+.rumdl-tooltip-item:last-child {
+  margin-bottom: 0;
+}
+
+.rumdl-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.rumdl-tooltip-header strong {
+  color: var(--text-normal);
+}
+
+.rumdl-tooltip-fixable {
+  color: var(--text-accent);
+  font-size: 0.85em;
+}
+
+.rumdl-tooltip-message {
+  color: var(--text-muted);
+}
+
+/* CodeMirror lint tooltip container */
+.cm-tooltip-lint {
+  pointer-events: auto !important;
+  background-color: var(--background-primary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  max-width: 400px !important;
+}
+
+/* Individual diagnostic item */
+.cm-diagnostic {
+  pointer-events: auto !important;
+  padding: 12px 14px !important;
+  border-bottom: 1px solid var(--background-modifier-border) !important;
+  margin: 0 !important;
+  background: transparent !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.cm-diagnostic:last-child {
+  border-bottom: none !important;
+}
+
+/* Warning indicator bar on left */
+.cm-diagnostic-warning {
+  border-left: 3px solid var(--color-orange) !important;
+}
+
+.cm-diagnostic-error {
+  border-left: 3px solid var(--color-red) !important;
+}
+
+/* Rule source label - show at top */
+.cm-diagnosticSource {
+  order: -1 !important;
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+  background-color: var(--background-secondary) !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  display: inline-block !important;
+  width: fit-content !important;
+  margin-bottom: 6px !important;
+  font-family: var(--font-monospace) !important;
+}
+
+/* Diagnostic message text */
+.cm-diagnosticText {
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  color: var(--text-normal) !important;
+  display: block !important;
+  margin-bottom: 0 !important;
+}
+
+/* Action buttons */
+.cm-diagnosticAction {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 4px 10px !important;
+  margin-top: 8px !important;
+  margin-right: 6px !important;
+  background-color: transparent !important;
+  color: var(--text-accent) !important;
+  border: 1px solid var(--text-accent) !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  width: auto !important;
+  max-width: fit-content !important;
+  transition: all 0.15s ease !important;
+}
+
+.cm-diagnosticAction:hover {
+  background-color: var(--text-accent) !important;
+  color: var(--text-on-accent) !important;
+}
+
+/* Hint severity - used for Fix All footer */
+.cm-diagnostic-hint {
+  border-left: 3px solid transparent !important;
+  background-color: var(--background-secondary) !important;
+  padding: 10px 14px !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+}
+
+.cm-diagnostic-hint .cm-diagnosticText {
+  display: none !important;
+}
+
+.cm-diagnostic-hint .cm-diagnosticSource {
+  order: 1 !important;
+  margin-bottom: 0 !important;
+  margin-top: 6px !important;
+  background-color: transparent !important;
+  color: var(--text-muted) !important;
+  padding: 0 !important;
+  font-family: var(--font-ui-small) !important;
+}
+
+.cm-diagnostic-hint .cm-diagnosticAction {
+  order: 0 !important;
+  margin-top: 0 !important;
+  background-color: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+  border: none !important;
+}
+
+.cm-diagnostic-hint .cm-diagnosticAction:hover {
+  background-color: var(--interactive-accent-hover) !important;
+}
