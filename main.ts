@@ -321,6 +321,48 @@ export default class RumdlPlugin extends Plugin {
     }
   }
 
+  settingsToToml(): string {
+    const lines: string[] = ['# rumdl configuration', '# Generated from Obsidian plugin settings', ''];
+    lines.push('[global]');
+
+    if (this.settings.lineLength > 0) {
+      lines.push(`line-length = ${this.settings.lineLength}`);
+    }
+
+    if (this.settings.disabledRules.length > 0) {
+      const rulesStr = this.settings.disabledRules.map(r => `"${r}"`).join(', ');
+      lines.push(`disable = [${rulesStr}]`);
+    }
+
+    return lines.join('\n') + '\n';
+  }
+
+  async exportToConfigFile(): Promise<boolean> {
+    const configPath = '.rumdl.toml';
+
+    // Check if file already exists
+    if (await this.app.vault.adapter.exists(configPath)) {
+      new Notice(`${configPath} already exists. Delete it first to export.`);
+      return false;
+    }
+
+    try {
+      const toml = this.settingsToToml();
+      await this.app.vault.create(configPath, toml);
+
+      // Enable config file mode and reload
+      this.settings.useConfigFile = true;
+      await this.saveSettings();
+
+      new Notice(`Created ${configPath} - now using config file`);
+      return true;
+    } catch (e) {
+      console.error('Failed to create config file:', e);
+      new Notice(`Failed to create ${configPath}`);
+      return false;
+    }
+  }
+
   lintEditor(editor: Editor, quiet = false) {
     if (!this.wasmReady || !this.linter) {
       new Notice('rumdl is not ready yet');
@@ -596,6 +638,19 @@ class RumdlSettingTab extends PluginSettingTab {
               this.plugin.settings.lineLength = isNaN(num) ? 0 : Math.max(0, num);
               await this.plugin.saveSettings();
             })
+        );
+
+      // Export button - only show if no config file exists
+      new Setting(containerEl)
+        .setName('Export to config file')
+        .setDesc('Create .rumdl.toml from current settings (one-time migration)')
+        .addButton((button) =>
+          button.setButtonText('Export to .rumdl.toml').onClick(async () => {
+            const success = await this.plugin.exportToConfigFile();
+            if (success) {
+              this.display(); // Refresh to show config file mode
+            }
+          })
         );
     }
   }
