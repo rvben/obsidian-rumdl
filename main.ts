@@ -24,6 +24,11 @@ interface RumdlPluginSettings {
   disabledRules: string[];
   lineLength: number;
   useConfigFile: boolean;
+  // Style options
+  headingStyle: 'atx' | 'setext' | 'consistent';
+  emphasisStyle: 'asterisk' | 'underscore' | 'consistent';
+  strongStyle: 'asterisk' | 'underscore' | 'consistent';
+  ulStyle: 'dash' | 'asterisk' | 'plus' | 'consistent';
 }
 
 const DEFAULT_SETTINGS: RumdlPluginSettings = {
@@ -32,6 +37,11 @@ const DEFAULT_SETTINGS: RumdlPluginSettings = {
   disabledRules: ['MD041'], // Disable first-line-heading by default for Obsidian
   lineLength: 0, // 0 = unlimited
   useConfigFile: true, // Auto-detect .rumdl.toml by default
+  // Style defaults
+  headingStyle: 'consistent',
+  emphasisStyle: 'consistent',
+  strongStyle: 'consistent',
+  ulStyle: 'consistent',
 };
 
 const CONFIG_FILE_NAMES = ['.rumdl.toml', 'rumdl.toml'];
@@ -214,6 +224,20 @@ export default class RumdlPlugin extends Plugin {
       config['line-length'] = this.settings.lineLength;
     }
 
+    // Style options (only add if not 'consistent' - let rumdl detect)
+    if (this.settings.headingStyle !== 'consistent') {
+      config.MD003 = { style: this.settings.headingStyle };
+    }
+    if (this.settings.emphasisStyle !== 'consistent') {
+      config.MD049 = { style: this.settings.emphasisStyle };
+    }
+    if (this.settings.strongStyle !== 'consistent') {
+      config.MD050 = { style: this.settings.strongStyle };
+    }
+    if (this.settings.ulStyle !== 'consistent') {
+      config.MD004 = { style: this.settings.ulStyle };
+    }
+
     this.linter = new Linter(config);
   }
 
@@ -332,6 +356,20 @@ export default class RumdlPlugin extends Plugin {
     if (this.settings.disabledRules.length > 0) {
       const rulesStr = this.settings.disabledRules.map(r => `"${r}"`).join(', ');
       lines.push(`disable = [${rulesStr}]`);
+    }
+
+    // Style options - only export if not 'consistent'
+    if (this.settings.headingStyle !== 'consistent') {
+      lines.push('', '[MD003]', `style = "${this.settings.headingStyle}"`);
+    }
+    if (this.settings.ulStyle !== 'consistent') {
+      lines.push('', '[MD004]', `style = "${this.settings.ulStyle}"`);
+    }
+    if (this.settings.emphasisStyle !== 'consistent') {
+      lines.push('', '[MD049]', `style = "${this.settings.emphasisStyle}"`);
+    }
+    if (this.settings.strongStyle !== 'consistent') {
+      lines.push('', '[MD050]', `style = "${this.settings.strongStyle}"`);
     }
 
     return lines.join('\n') + '\n';
@@ -636,6 +674,70 @@ class RumdlSettingTab extends PluginSettingTab {
             .onChange(async (value) => {
               const num = parseInt(value, 10);
               this.plugin.settings.lineLength = isNaN(num) ? 0 : Math.max(0, num);
+              await this.plugin.saveSettings();
+            })
+        );
+
+      // Style options
+      containerEl.createEl('h4', { text: 'Style preferences' });
+
+      new Setting(containerEl)
+        .setName('Heading style')
+        .setDesc('Preferred heading format (# vs underline)')
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption('consistent', 'Consistent (detect from file)')
+            .addOption('atx', 'ATX (# Heading)')
+            .addOption('setext', 'Setext (underlined)')
+            .setValue(this.plugin.settings.headingStyle)
+            .onChange(async (value: 'atx' | 'setext' | 'consistent') => {
+              this.plugin.settings.headingStyle = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Unordered list style')
+        .setDesc('Preferred bullet character')
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption('consistent', 'Consistent (detect from file)')
+            .addOption('dash', 'Dash (-)')
+            .addOption('asterisk', 'Asterisk (*)')
+            .addOption('plus', 'Plus (+)')
+            .setValue(this.plugin.settings.ulStyle)
+            .onChange(async (value: 'dash' | 'asterisk' | 'plus' | 'consistent') => {
+              this.plugin.settings.ulStyle = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Emphasis style')
+        .setDesc('Preferred emphasis marker for *italic*')
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption('consistent', 'Consistent (detect from file)')
+            .addOption('asterisk', 'Asterisk (*text*)')
+            .addOption('underscore', 'Underscore (_text_)')
+            .setValue(this.plugin.settings.emphasisStyle)
+            .onChange(async (value: 'asterisk' | 'underscore' | 'consistent') => {
+              this.plugin.settings.emphasisStyle = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Strong style')
+        .setDesc('Preferred strong marker for **bold**')
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption('consistent', 'Consistent (detect from file)')
+            .addOption('asterisk', 'Asterisk (**text**)')
+            .addOption('underscore', 'Underscore (__text__)')
+            .setValue(this.plugin.settings.strongStyle)
+            .onChange(async (value: 'asterisk' | 'underscore' | 'consistent') => {
+              this.plugin.settings.strongStyle = value;
               await this.plugin.saveSettings();
             })
         );
