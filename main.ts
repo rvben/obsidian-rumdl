@@ -648,6 +648,14 @@ class RumdlSettingTab extends PluginSettingTab {
     if (!this.plugin.settings.useConfigFile || !this.plugin.configFilePath) {
       containerEl.createEl('h4', { text: 'Fallback settings', cls: 'rumdl-settings-fallback' });
 
+      const noteEl = containerEl.createEl('p', { cls: 'rumdl-settings-note' });
+      noteEl.setText('These are common options. For all 60+ rule configurations, use a ');
+      noteEl.createEl('a', {
+        text: '.rumdl.toml config file',
+        href: 'https://github.com/rvben/rumdl#configuration',
+      });
+      noteEl.appendText('.');
+
       new Setting(containerEl)
         .setName('Disabled rules')
         .setDesc('Comma-separated list of rules to disable (e.g., MD041,MD013)')
