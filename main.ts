@@ -19,14 +19,14 @@ interface RumdlWarning {
 }
 
 interface RumdlPluginSettings {
-  lintOnSave: boolean;
+  formatOnSave: boolean;
   showStatusBar: boolean;
   disabledRules: string[];
   lineLength: number;
 }
 
 const DEFAULT_SETTINGS: RumdlPluginSettings = {
-  lintOnSave: false,
+  formatOnSave: false,
   showStatusBar: true,
   disabledRules: ['MD041'], // Disable first-line-heading by default for Obsidian
   lineLength: 0, // 0 = unlimited
@@ -123,6 +123,7 @@ export default class RumdlPlugin extends Plugin {
   statusBarItem: HTMLElement;
   wasmReady = false;
   linter: Linter | null = null;
+  originalSaveCallback: ((checking: boolean) => boolean) | undefined;
 
   updateStatusBar(issueCount: number | null) {
     if (!this.statusBarItem) return;
@@ -215,6 +216,9 @@ export default class RumdlPlugin extends Plugin {
 
       const version = get_version();
       console.log(`rumdl v${version} loaded`);
+
+      // Setup format on save hook
+      this.setupFormatOnSave();
     } catch (error) {
       console.error('Failed to load rumdl-wasm:', error);
       new Notice('Failed to load rumdl markdown linter');
@@ -274,6 +278,7 @@ export default class RumdlPlugin extends Plugin {
 
   onunload() {
     pluginInstance = null;
+    this.restoreOriginalSave();
     if (this.linter) {
       this.linter.free();
       this.linter = null;
@@ -353,6 +358,46 @@ export default class RumdlPlugin extends Plugin {
 
     const rules = JSON.parse(get_available_rules());
     new RulesModal(this.app, rules).open();
+  }
+
+  setupFormatOnSave() {
+    const saveCommandDefinition = (this.app as any).commands?.commands?.['editor:save-file'];
+    this.originalSaveCallback = saveCommandDefinition?.checkCallback;
+
+    if (typeof this.originalSaveCallback === 'function') {
+      saveCommandDefinition.checkCallback = (checking: boolean) => {
+        if (checking) {
+          return this.originalSaveCallback!(checking);
+        }
+
+        // Apply fixes before the actual save
+        if (this.settings.formatOnSave && this.wasmReady && this.linter) {
+          const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+          if (view?.file?.extension === 'md') {
+            const editor = view.editor;
+            const content = editor.getValue();
+            const fixed = this.linter.fix(content);
+
+            if (fixed !== content) {
+              const cursor = editor.getCursor();
+              editor.setValue(fixed);
+              editor.setCursor(cursor);
+            }
+          }
+        }
+
+        return this.originalSaveCallback!(checking);
+      };
+    }
+  }
+
+  restoreOriginalSave() {
+    if (this.originalSaveCallback) {
+      const saveCommandDefinition = (this.app as any).commands?.commands?.['editor:save-file'];
+      if (saveCommandDefinition) {
+        saveCommandDefinition.checkCallback = this.originalSaveCallback;
+      }
+    }
   }
 }
 
@@ -457,11 +502,11 @@ class RumdlSettingTab extends PluginSettingTab {
     containerEl.createEl('h2', { text: 'rumdl Settings' });
 
     new Setting(containerEl)
-      .setName('Lint on save')
-      .setDesc('Automatically lint files when they are saved')
+      .setName('Format on save')
+      .setDesc('Automatically fix issues when files are saved')
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.lintOnSave).onChange(async (value) => {
-          this.plugin.settings.lintOnSave = value;
+        toggle.setValue(this.plugin.settings.formatOnSave).onChange(async (value) => {
+          this.plugin.settings.formatOnSave = value;
           await this.plugin.saveSettings();
         })
       );
