@@ -1,5 +1,6 @@
 import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
-import { initSync, Linter, get_version, get_available_rules } from './lib/rumdl_lib';
+import { initSync, Linter, get_version, get_available_rules } from 'rumdl-wasm';
+import * as TOML from '@iarna/toml';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
 
@@ -224,7 +225,8 @@ export default class RumdlPlugin extends Plugin {
         if (await this.app.vault.adapter.exists(configName)) {
           try {
             const tomlContent = await this.app.vault.adapter.read(configName);
-            this.linter = Linter.from_toml(tomlContent);
+            const config = TOML.parse(tomlContent);
+            this.linter = new Linter(config);
             this.configFilePath = configName;
             return;
           } catch (e) {
