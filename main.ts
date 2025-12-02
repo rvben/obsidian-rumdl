@@ -656,21 +656,58 @@ class RumdlSettingTab extends PluginSettingTab {
       });
       noteEl.appendText('.');
 
-      new Setting(containerEl)
-        .setName('Disabled rules')
-        .setDesc('Comma-separated list of rules to disable (e.g., MD041,MD013)')
-        .addText((text) =>
-          text
-            .setPlaceholder('MD041,MD013')
-            .setValue(this.plugin.settings.disabledRules.join(','))
-            .onChange(async (value) => {
-              this.plugin.settings.disabledRules = value
-                .split(',')
-                .map((s) => s.trim())
-                .filter((s) => s.length > 0);
-              await this.plugin.saveSettings();
-            })
-        );
+      // Disabled rules - collapsible section with toggles
+      const rulesHeader = containerEl.createEl('div', { cls: 'rumdl-rules-header' });
+      const collapseIcon = rulesHeader.createSpan({ cls: 'rumdl-collapse-icon' });
+      setIcon(collapseIcon, 'chevron-right');
+      rulesHeader.createSpan({ text: 'Disabled rules' });
+
+      const disabledCount = this.plugin.settings.disabledRules.length;
+      if (disabledCount > 0) {
+        rulesHeader.createSpan({ text: ` (${disabledCount} disabled)`, cls: 'rumdl-disabled-count' });
+      }
+
+      const rulesContainer = containerEl.createEl('div', { cls: 'rumdl-rules-container rumdl-collapsed' });
+
+      rulesHeader.addEventListener('click', () => {
+        rulesContainer.classList.toggle('rumdl-collapsed');
+        setIcon(collapseIcon, rulesContainer.classList.contains('rumdl-collapsed') ? 'chevron-right' : 'chevron-down');
+      });
+
+      // Get all available rules and create toggles
+      if (this.plugin.wasmReady) {
+        const rules: { name: string; description: string }[] = JSON.parse(get_available_rules());
+
+        for (const rule of rules) {
+          const isDisabled = this.plugin.settings.disabledRules.includes(rule.name);
+
+          new Setting(rulesContainer)
+            .setName(rule.name)
+            .setDesc(rule.description)
+            .addToggle((toggle) =>
+              toggle.setValue(!isDisabled).onChange(async (enabled) => {
+                if (enabled) {
+                  // Remove from disabled list
+                  this.plugin.settings.disabledRules = this.plugin.settings.disabledRules.filter(r => r !== rule.name);
+                } else {
+                  // Add to disabled list
+                  if (!this.plugin.settings.disabledRules.includes(rule.name)) {
+                    this.plugin.settings.disabledRules.push(rule.name);
+                  }
+                }
+                await this.plugin.saveSettings();
+                // Update the count in header
+                const countSpan = rulesHeader.querySelector('.rumdl-disabled-count');
+                const newCount = this.plugin.settings.disabledRules.length;
+                if (countSpan) {
+                  countSpan.textContent = newCount > 0 ? ` (${newCount} disabled)` : '';
+                } else if (newCount > 0) {
+                  rulesHeader.createSpan({ text: ` (${newCount} disabled)`, cls: 'rumdl-disabled-count' });
+                }
+              })
+            );
+        }
+      }
 
       new Setting(containerEl)
         .setName('Line length')
