@@ -12,8 +12,8 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === "production";
 
-// Copy WASM file to output
-const wasmSource = join(dirname(import.meta.url.replace("file://", "")), "node_modules/rumdl-wasm/rumdl_lib_bg.wasm");
+// Copy WASM file to output from local lib/ (requires Linter class not yet in npm)
+const wasmSource = join(dirname(import.meta.url.replace("file://", "")), "lib/rumdl_lib_bg.wasm");
 const wasmDest = "rumdl_lib_bg.wasm";
 
 const context = await esbuild.context({

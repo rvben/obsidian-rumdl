@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
-import { initSync, Linter, get_version, get_available_rules } from 'rumdl-wasm';
+import { initSync, Linter, get_version, get_available_rules } from './lib/rumdl_lib';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
 
@@ -23,6 +23,7 @@ interface RumdlPluginSettings {
   showStatusBar: boolean;
   disabledRules: string[];
   lineLength: number;
+  useConfigFile: boolean;
 }
 
 const DEFAULT_SETTINGS: RumdlPluginSettings = {
@@ -30,7 +31,10 @@ const DEFAULT_SETTINGS: RumdlPluginSettings = {
   showStatusBar: true,
   disabledRules: ['MD041'], // Disable first-line-heading by default for Obsidian
   lineLength: 0, // 0 = unlimited
+  useConfigFile: true, // Auto-detect .rumdl.toml by default
 };
+
+const CONFIG_FILE_NAMES = ['.rumdl.toml', 'rumdl.toml'];
 
 // Global reference to the plugin instance for the linter
 let pluginInstance: RumdlPlugin | null = null;
@@ -124,6 +128,7 @@ export default class RumdlPlugin extends Plugin {
   wasmReady = false;
   linter: Linter | null = null;
   originalSaveCallback: ((checking: boolean) => boolean) | undefined;
+  configFilePath: string | null = null;
 
   updateStatusBar(issueCount: number | null) {
     if (!this.statusBarItem) return;
@@ -179,7 +184,26 @@ export default class RumdlPlugin extends Plugin {
     menu.showAtMouseEvent(e);
   }
 
-  createLinter() {
+  async createLinter() {
+    // Try to load from config file first if enabled
+    if (this.settings.useConfigFile) {
+      for (const configName of CONFIG_FILE_NAMES) {
+        if (await this.app.vault.adapter.exists(configName)) {
+          try {
+            const tomlContent = await this.app.vault.adapter.read(configName);
+            this.linter = Linter.from_toml(tomlContent);
+            this.configFilePath = configName;
+            console.log(`rumdl: using config from ${configName}`);
+            return;
+          } catch (e) {
+            console.error(`rumdl: failed to parse ${configName}:`, e);
+          }
+        }
+      }
+    }
+
+    // Fall back to plugin settings
+    this.configFilePath = null;
     const config: Record<string, unknown> = {};
 
     if (this.settings.disabledRules.length > 0) {
@@ -211,7 +235,7 @@ export default class RumdlPlugin extends Plugin {
       initSync(wasmBuffer);
 
       // Create the linter instance with configuration
-      this.createLinter();
+      await this.createLinter();
       this.wasmReady = true;
 
       const version = get_version();
@@ -293,7 +317,7 @@ export default class RumdlPlugin extends Plugin {
     await this.saveData(this.settings);
     // Recreate linter with new settings
     if (this.wasmReady) {
-      this.createLinter();
+      await this.createLinter();
     }
   }
 
@@ -501,6 +525,7 @@ class RumdlSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h2', { text: 'rumdl Settings' });
 
+    // Plugin behavior settings
     new Setting(containerEl)
       .setName('Format on save')
       .setDesc('Automatically fix issues when files are saved')
@@ -521,34 +546,57 @@ class RumdlSettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
-      .setName('Disabled rules')
-      .setDesc('Comma-separated list of rules to disable (e.g., MD041,MD013)')
-      .addText((text) =>
-        text
-          .setPlaceholder('MD041,MD013')
-          .setValue(this.plugin.settings.disabledRules.join(','))
-          .onChange(async (value) => {
-            this.plugin.settings.disabledRules = value
-              .split(',')
-              .map((s) => s.trim())
-              .filter((s) => s.length > 0);
-            await this.plugin.saveSettings();
-          })
-      );
+    // Configuration section
+    containerEl.createEl('h3', { text: 'Configuration' });
+
+    const configDesc = this.plugin.configFilePath
+      ? `Using config from: ${this.plugin.configFilePath}`
+      : 'No config file found. Using settings below.';
 
     new Setting(containerEl)
-      .setName('Line length')
-      .setDesc('Maximum line length (0 = unlimited)')
-      .addText((text) =>
-        text
-          .setPlaceholder('80')
-          .setValue(String(this.plugin.settings.lineLength))
-          .onChange(async (value) => {
-            const num = parseInt(value, 10);
-            this.plugin.settings.lineLength = isNaN(num) ? 0 : Math.max(0, num);
-            await this.plugin.saveSettings();
-          })
+      .setName('Use config file')
+      .setDesc(`Auto-detect .rumdl.toml in vault root. ${configDesc}`)
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.useConfigFile).onChange(async (value) => {
+          this.plugin.settings.useConfigFile = value;
+          await this.plugin.saveSettings();
+          this.display(); // Refresh to show/hide rule settings
+        })
       );
+
+    // Only show rule settings if not using config file
+    if (!this.plugin.settings.useConfigFile || !this.plugin.configFilePath) {
+      containerEl.createEl('h4', { text: 'Fallback settings', cls: 'rumdl-settings-fallback' });
+
+      new Setting(containerEl)
+        .setName('Disabled rules')
+        .setDesc('Comma-separated list of rules to disable (e.g., MD041,MD013)')
+        .addText((text) =>
+          text
+            .setPlaceholder('MD041,MD013')
+            .setValue(this.plugin.settings.disabledRules.join(','))
+            .onChange(async (value) => {
+              this.plugin.settings.disabledRules = value
+                .split(',')
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0);
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Line length')
+        .setDesc('Maximum line length (0 = unlimited)')
+        .addText((text) =>
+          text
+            .setPlaceholder('80')
+            .setValue(String(this.plugin.settings.lineLength))
+            .onChange(async (value) => {
+              const num = parseInt(value, 10);
+              this.plugin.settings.lineLength = isNaN(num) ? 0 : Math.max(0, num);
+              await this.plugin.saveSettings();
+            })
+        );
+    }
   }
 }
