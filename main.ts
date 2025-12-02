@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
-import { initSync, lint_markdown, apply_all_fixes, get_version, get_available_rules } from 'rumdl-wasm';
+import { initSync, Linter, get_version, get_available_rules } from 'rumdl-wasm';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
 
@@ -21,11 +21,15 @@ interface RumdlWarning {
 interface RumdlPluginSettings {
   lintOnSave: boolean;
   showStatusBar: boolean;
+  disabledRules: string[];
+  lineLength: number;
 }
 
 const DEFAULT_SETTINGS: RumdlPluginSettings = {
   lintOnSave: false,
   showStatusBar: true,
+  disabledRules: ['MD041'], // Disable first-line-heading by default for Obsidian
+  lineLength: 0, // 0 = unlimited
 };
 
 // Global reference to the plugin instance for the linter
@@ -33,12 +37,12 @@ let pluginInstance: RumdlPlugin | null = null;
 
 // Create a linter extension using @codemirror/lint
 const rumdlLinter = linter((view: EditorView) => {
-  if (!pluginInstance || !pluginInstance.wasmReady) {
+  if (!pluginInstance || !pluginInstance.wasmReady || !pluginInstance.linter) {
     return [];
   }
 
   const content = view.state.doc.toString();
-  const result = lint_markdown(content);
+  const result = pluginInstance.linter.check(content);
   const warnings: RumdlWarning[] = JSON.parse(result);
 
   // Update status bar
@@ -96,8 +100,9 @@ const rumdlLinter = linter((view: EditorView) => {
       actions: [{
         name: 'Fix All',
         apply: (view: EditorView) => {
+          if (!pluginInstance?.linter) return;
           const currentContent = view.state.doc.toString();
-          const fixed = apply_all_fixes(currentContent);
+          const fixed = pluginInstance.linter.fix(currentContent);
           if (fixed !== currentContent) {
             view.dispatch({
               changes: { from: 0, to: currentContent.length, insert: fixed }
@@ -117,6 +122,7 @@ export default class RumdlPlugin extends Plugin {
   settings: RumdlPluginSettings;
   statusBarItem: HTMLElement;
   wasmReady = false;
+  linter: Linter | null = null;
 
   updateStatusBar(issueCount: number | null) {
     if (!this.statusBarItem) return;
@@ -127,7 +133,6 @@ export default class RumdlPlugin extends Plugin {
 
     if (issueCount === null) {
       setIcon(iconEl, 'file-check');
-      textEl.setText('ready');
     } else if (issueCount === 0) {
       setIcon(iconEl, 'check-circle');
       this.statusBarItem.addClass('rumdl-clean');
@@ -146,7 +151,7 @@ export default class RumdlPlugin extends Plugin {
 
     menu.addItem((item) =>
       item
-        .setTitle('📋 View issues')
+        .setTitle('View issues')
         .setDisabled(!view)
         .onClick(() => {
           if (view) this.lintEditor(view.editor);
@@ -155,7 +160,7 @@ export default class RumdlPlugin extends Plugin {
 
     menu.addItem((item) =>
       item
-        .setTitle('🔧 Fix all issues')
+        .setTitle('Fix all issues')
         .setDisabled(!view)
         .onClick(() => {
           if (view) this.fixAll(view.editor);
@@ -166,11 +171,25 @@ export default class RumdlPlugin extends Plugin {
 
     menu.addItem((item) =>
       item
-        .setTitle('📖 Available rules')
+        .setTitle('Available rules')
         .onClick(() => this.showRules())
     );
 
     menu.showAtMouseEvent(e);
+  }
+
+  createLinter() {
+    const config: Record<string, unknown> = {};
+
+    if (this.settings.disabledRules.length > 0) {
+      config.disable = this.settings.disabledRules;
+    }
+
+    if (this.settings.lineLength > 0) {
+      config['line-length'] = this.settings.lineLength;
+    }
+
+    this.linter = new Linter(config);
   }
 
   async onload() {
@@ -189,6 +208,9 @@ export default class RumdlPlugin extends Plugin {
 
       // Initialize WASM synchronously with the buffer
       initSync(wasmBuffer);
+
+      // Create the linter instance with configuration
+      this.createLinter();
       this.wasmReady = true;
 
       const version = get_version();
@@ -252,6 +274,10 @@ export default class RumdlPlugin extends Plugin {
 
   onunload() {
     pluginInstance = null;
+    if (this.linter) {
+      this.linter.free();
+      this.linter = null;
+    }
   }
 
   async loadSettings() {
@@ -260,16 +286,20 @@ export default class RumdlPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    // Recreate linter with new settings
+    if (this.wasmReady) {
+      this.createLinter();
+    }
   }
 
   lintEditor(editor: Editor, quiet = false) {
-    if (!this.wasmReady) {
+    if (!this.wasmReady || !this.linter) {
       new Notice('rumdl is not ready yet');
       return;
     }
 
     const content = editor.getValue();
-    const result = lint_markdown(content);
+    const result = this.linter.check(content);
     const warnings: RumdlWarning[] = JSON.parse(result);
 
     this.updateStatusBar(warnings.length);
@@ -286,13 +316,13 @@ export default class RumdlPlugin extends Plugin {
   }
 
   fixAll(editor: Editor) {
-    if (!this.wasmReady) {
+    if (!this.wasmReady || !this.linter) {
       new Notice('rumdl is not ready yet');
       return;
     }
 
     const content = editor.getValue();
-    const fixed = apply_all_fixes(content);
+    const fixed = this.linter.fix(content);
 
     if (fixed !== content) {
       const cursor = editor.getCursor();
@@ -300,7 +330,7 @@ export default class RumdlPlugin extends Plugin {
       editor.setCursor(cursor);
 
       // Re-lint to show remaining issues
-      const result = lint_markdown(fixed);
+      const result = this.linter.check(fixed);
       const remaining: RumdlWarning[] = JSON.parse(result);
 
       this.updateStatusBar(remaining.length);
@@ -444,6 +474,36 @@ class RumdlSettingTab extends PluginSettingTab {
           this.plugin.settings.showStatusBar = value;
           await this.plugin.saveSettings();
         })
+      );
+
+    new Setting(containerEl)
+      .setName('Disabled rules')
+      .setDesc('Comma-separated list of rules to disable (e.g., MD041,MD013)')
+      .addText((text) =>
+        text
+          .setPlaceholder('MD041,MD013')
+          .setValue(this.plugin.settings.disabledRules.join(','))
+          .onChange(async (value) => {
+            this.plugin.settings.disabledRules = value
+              .split(',')
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0);
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Line length')
+      .setDesc('Maximum line length (0 = unlimited)')
+      .addText((text) =>
+        text
+          .setPlaceholder('80')
+          .setValue(String(this.plugin.settings.lineLength))
+          .onChange(async (value) => {
+            const num = parseInt(value, 10);
+            this.plugin.settings.lineLength = isNaN(num) ? 0 : Math.max(0, num);
+            await this.plugin.saveSettings();
+          })
       );
   }
 }
