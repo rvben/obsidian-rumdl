@@ -152,7 +152,14 @@
   margin: 0 !important;
   background: transparent !important;
   display: flex !important;
-  flex-direction: column !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+}
+
+/* Make source and text take full row */
+.cm-diagnostic .cm-diagnosticSource,
+.cm-diagnostic .cm-diagnosticText {
+  flex-basis: 100% !important;
 }
 
 .cm-diagnostic:last-child {
@@ -217,6 +224,20 @@
   color: var(--text-on-accent) !important;
 }
 
+/* Secondary style for Docs button */
+.cm-diagnosticAction:last-of-type:not(:first-of-type) {
+  background-color: transparent !important;
+  color: var(--text-muted) !important;
+  border: none !important;
+  padding: 4px 6px !important;
+  font-weight: 400 !important;
+}
+
+.cm-diagnosticAction:last-of-type:not(:first-of-type):hover {
+  color: var(--text-accent) !important;
+  background-color: transparent !important;
+}
+
 /* Hint severity - used for Fix All footer */
 .cm-diagnostic-hint {
   border-left: 3px solid transparent !important;
@@ -252,7 +273,7 @@
   background-color: var(--interactive-accent-hover) !important;
 }
 
-/* Collapsible rules settings */
+/* Rules section - collapsible headers */
 .rumdl-rules-header {
   display: flex;
   align-items: center;
@@ -279,12 +300,7 @@
   height: 16px;
 }
 
-.rumdl-disabled-count {
-  color: var(--text-muted);
-  font-weight: normal;
-  font-size: 0.9em;
-}
-
+/* Rules container */
 .rumdl-rules-container {
   max-height: 400px;
   overflow-y: auto;
@@ -314,4 +330,32 @@
 
 .rumdl-rules-container .setting-item-description {
   font-size: 0.85em;
+}
+
+/* Empty state message */
+.rumdl-empty-message {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 12px 0;
+  font-size: 0.9em;
+}
+
+/* Disabled rule styling */
+.rumdl-rule-disabled {
+  background-color: var(--background-secondary);
+  border-radius: 6px;
+  margin: 4px 0;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+.rumdl-rule-disabled .setting-item-name {
+  color: var(--text-muted);
+}
+
+/* Divider between disabled and enabled rules */
+.rumdl-rules-divider {
+  height: 1px;
+  background: var(--background-modifier-border);
+  margin: 12px 0;
 }

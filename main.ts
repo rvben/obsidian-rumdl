@@ -46,6 +46,11 @@ const DEFAULT_SETTINGS: RumdlPluginSettings = {
 
 const CONFIG_FILE_NAMES = ['.rumdl.toml', 'rumdl.toml'];
 
+// Generate URL for rule documentation
+function getRuleDocsUrl(ruleName: string): string {
+  return `https://github.com/rvben/rumdl/blob/main/docs/${ruleName.toLowerCase()}.md`;
+}
+
 // Global reference to the plugin instance for the linter
 let pluginInstance: RumdlPlugin | null = null;
 
@@ -72,13 +77,17 @@ const rumdlLinter = linter((view: EditorView) => {
       const from = line.from + Math.max(0, (warning.column || 1) - 1);
       const to = line.to;
 
+      const ruleName = warning.rule_name || warning.rule || 'rumdl';
       const diagnostic: Diagnostic = {
         from,
         to,
         severity: 'warning',
         message: warning.message,
-        source: warning.rule_name || warning.rule || 'rumdl',
+        source: ruleName,
       };
+
+      // Build actions array
+      const actions: Array<{ name: string; apply: (view: EditorView) => void }> = [];
 
       // Add fix action if available
       if (warning.fix) {
@@ -86,14 +95,28 @@ const rumdlLinter = linter((view: EditorView) => {
         const fixEnd = warning.fix.range.end;
         const fixReplacement = warning.fix.replacement;
 
-        diagnostic.actions = [{
+        actions.push({
           name: 'Fix',
           apply: (view: EditorView) => {
             view.dispatch({
               changes: { from: fixStart, to: fixEnd, insert: fixReplacement }
             });
           }
-        }];
+        });
+      }
+
+      // Add docs action if we have a valid rule name (MD###)
+      if (ruleName.match(/^MD\d{3}$/i)) {
+        actions.push({
+          name: 'Docs',
+          apply: () => {
+            window.open(getRuleDocsUrl(ruleName), '_blank');
+          }
+        });
+      }
+
+      if (actions.length > 0) {
+        diagnostic.actions = actions;
       }
 
       diagnostics.push(diagnostic);
@@ -203,7 +226,6 @@ export default class RumdlPlugin extends Plugin {
             const tomlContent = await this.app.vault.adapter.read(configName);
             this.linter = Linter.from_toml(tomlContent);
             this.configFilePath = configName;
-            console.log(`rumdl: using config from ${configName}`);
             return;
           } catch (e) {
             console.error(`rumdl: failed to parse ${configName}:`, e);
@@ -656,56 +678,83 @@ class RumdlSettingTab extends PluginSettingTab {
       });
       noteEl.appendText('.');
 
-      // Disabled rules - collapsible section with toggles
-      const rulesHeader = containerEl.createEl('div', { cls: 'rumdl-rules-header' });
-      const collapseIcon = rulesHeader.createSpan({ cls: 'rumdl-collapse-icon' });
-      setIcon(collapseIcon, 'chevron-right');
-      rulesHeader.createSpan({ text: 'Disabled rules' });
-
-      const disabledCount = this.plugin.settings.disabledRules.length;
-      if (disabledCount > 0) {
-        rulesHeader.createSpan({ text: ` (${disabledCount} disabled)`, cls: 'rumdl-disabled-count' });
-      }
-
-      const rulesContainer = containerEl.createEl('div', { cls: 'rumdl-rules-container rumdl-collapsed' });
-
-      rulesHeader.addEventListener('click', () => {
-        rulesContainer.classList.toggle('rumdl-collapsed');
-        setIcon(collapseIcon, rulesContainer.classList.contains('rumdl-collapsed') ? 'chevron-right' : 'chevron-down');
-      });
-
-      // Get all available rules and create toggles
+      // Rules section - single list with disabled rules at top
       if (this.plugin.wasmReady) {
-        const rules: { name: string; description: string }[] = JSON.parse(get_available_rules());
+        const allRules: { name: string; description: string }[] = JSON.parse(get_available_rules());
 
-        for (const rule of rules) {
+        // Helper to create a rule setting
+        const createRuleSetting = (rule: { name: string; description: string }, container: HTMLElement) => {
           const isDisabled = this.plugin.settings.disabledRules.includes(rule.name);
-
-          new Setting(rulesContainer)
+          const setting = new Setting(container)
             .setName(rule.name)
             .setDesc(rule.description)
+            .addExtraButton((button) =>
+              button
+                .setIcon('external-link')
+                .setTooltip('View documentation')
+                .onClick(() => {
+                  window.open(getRuleDocsUrl(rule.name), '_blank');
+                })
+            )
             .addToggle((toggle) =>
               toggle.setValue(!isDisabled).onChange(async (enabled) => {
                 if (enabled) {
-                  // Remove from disabled list
                   this.plugin.settings.disabledRules = this.plugin.settings.disabledRules.filter(r => r !== rule.name);
                 } else {
-                  // Add to disabled list
                   if (!this.plugin.settings.disabledRules.includes(rule.name)) {
                     this.plugin.settings.disabledRules.push(rule.name);
                   }
                 }
                 await this.plugin.saveSettings();
-                // Update the count in header
-                const countSpan = rulesHeader.querySelector('.rumdl-disabled-count');
-                const newCount = this.plugin.settings.disabledRules.length;
-                if (countSpan) {
-                  countSpan.textContent = newCount > 0 ? ` (${newCount} disabled)` : '';
-                } else if (newCount > 0) {
-                  rulesHeader.createSpan({ text: ` (${newCount} disabled)`, cls: 'rumdl-disabled-count' });
-                }
+                this.display();
               })
             );
+
+          // Add visual styling for disabled rules
+          if (isDisabled) {
+            setting.settingEl.addClass('rumdl-rule-disabled');
+          }
+        };
+
+        // Single collapsible rules list
+        const disabledCount = this.plugin.settings.disabledRules.length;
+        const rulesHeader = containerEl.createEl('div', { cls: 'rumdl-rules-header' });
+        const collapseIcon = rulesHeader.createSpan({ cls: 'rumdl-collapse-icon' });
+        setIcon(collapseIcon, 'chevron-right');
+        rulesHeader.createSpan({
+          text: disabledCount > 0
+            ? `Rules (${disabledCount} disabled)`
+            : `Rules (${allRules.length})`
+        });
+
+        const rulesContainer = containerEl.createEl('div', { cls: 'rumdl-rules-container rumdl-collapsed' });
+
+        rulesHeader.addEventListener('click', () => {
+          rulesContainer.classList.toggle('rumdl-collapsed');
+          setIcon(collapseIcon, rulesContainer.classList.contains('rumdl-collapsed') ? 'chevron-right' : 'chevron-down');
+        });
+
+        // Sort rules: disabled first, then alphabetically
+        const sortedRules = [...allRules].sort((a, b) => {
+          const aDisabled = this.plugin.settings.disabledRules.includes(a.name);
+          const bDisabled = this.plugin.settings.disabledRules.includes(b.name);
+          if (aDisabled && !bDisabled) return -1;
+          if (!aDisabled && bDisabled) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        // Add divider after disabled rules if any exist
+        let addedDivider = false;
+        for (const rule of sortedRules) {
+          const isDisabled = this.plugin.settings.disabledRules.includes(rule.name);
+
+          // Add divider between disabled and enabled sections
+          if (!isDisabled && !addedDivider && disabledCount > 0) {
+            rulesContainer.createEl('div', { cls: 'rumdl-rules-divider' });
+            addedDivider = true;
+          }
+
+          createRuleSetting(rule, rulesContainer);
         }
       }
 
