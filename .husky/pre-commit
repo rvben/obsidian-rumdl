@@ -1,1 +1,3 @@
 npm run lint
+npm run build
+rumdl fmt README.md && git add README.md

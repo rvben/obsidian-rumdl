@@ -81,6 +81,7 @@ The plugin comes with sensible defaults for Obsidian:
 rumdl supports 50+ lint rules. Click the docs icon next to each rule in settings to learn more.
 
 Common rules include:
+
 - **MD001** - Heading levels should increment by one
 - **MD003** - Heading style consistency
 - **MD009** - No trailing spaces
