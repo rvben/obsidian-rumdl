@@ -298,7 +298,7 @@ export default class RumdlPlugin extends Plugin {
       this.setupFormatOnSave();
     } catch (error) {
       console.error('Failed to load rumdl-wasm:', error);
-      new Notice('Failed to load rumdl markdown linter');
+      new Notice('Failed to load rumdl linter');
       return;
     }
 
@@ -431,7 +431,7 @@ export default class RumdlPlugin extends Plugin {
 
   lintEditor(editor: Editor, quiet = false) {
     if (!this.wasmReady || !this.linter) {
-      new Notice('rumdl is not ready yet');
+      new Notice('Linter is not ready yet');
       return;
     }
 
@@ -454,7 +454,7 @@ export default class RumdlPlugin extends Plugin {
 
   fixAll(editor: Editor) {
     if (!this.wasmReady || !this.linter) {
-      new Notice('rumdl is not ready yet');
+      new Notice('Linter is not ready yet');
       return;
     }
 
@@ -484,7 +484,7 @@ export default class RumdlPlugin extends Plugin {
 
   showRules() {
     if (!this.wasmReady) {
-      new Notice('rumdl is not ready yet');
+      new Notice('Linter is not ready yet');
       return;
     }
 
@@ -785,7 +785,7 @@ class RumdlSettingTab extends PluginSettingTab {
         .addDropdown((dropdown) =>
           dropdown
             .addOption('consistent', 'Consistent (detect from file)')
-            .addOption('atx', 'ATX (# Heading)')
+            .addOption('atx', 'Hash style (# heading)')
             .addOption('setext', 'Setext (underlined)')
             .setValue(this.plugin.settings.headingStyle)
             .onChange(async (value: 'atx' | 'setext' | 'consistent') => {
