@@ -4,6 +4,15 @@ import * as TOML from '@iarna/toml';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
 
+// Internal Obsidian API type for command manipulation
+interface InternalAppCommands {
+  commands?: {
+    commands?: Record<string, {
+      checkCallback?: (checking: boolean) => boolean;
+    }>;
+  };
+}
+
 interface RumdlWarning {
   line: number;
   column: number;
@@ -52,109 +61,108 @@ function getRuleDocsUrl(ruleName: string): string {
   return `https://github.com/rvben/rumdl/blob/main/docs/${ruleName.toLowerCase()}.md`;
 }
 
-// Global reference to the plugin instance for the linter
-let pluginInstance: RumdlPlugin | null = null;
-
-// Create a linter extension using @codemirror/lint
-const rumdlLinter = linter((view: EditorView) => {
-  if (!pluginInstance || !pluginInstance.wasmReady || !pluginInstance.linter) {
-    return [];
-  }
-
-  const content = view.state.doc.toString();
-  const result = pluginInstance.linter.check(content);
-  const warnings: RumdlWarning[] = JSON.parse(result);
-
-  // Update status bar
-  pluginInstance.updateStatusBar(warnings.length);
-
-  // Convert rumdl warnings to CodeMirror diagnostics
-  const diagnostics: Diagnostic[] = [];
-
-  for (const warning of warnings) {
-    // Convert line/column to document position
-    if (warning.line >= 1 && warning.line <= view.state.doc.lines) {
-      const line = view.state.doc.line(warning.line);
-      const from = line.from + Math.max(0, (warning.column || 1) - 1);
-      const to = line.to;
-
-      const ruleName = warning.rule_name || warning.rule || 'rumdl';
-      const diagnostic: Diagnostic = {
-        from,
-        to,
-        severity: 'warning',
-        message: warning.message,
-        source: ruleName,
-      };
-
-      // Build actions array
-      const actions: Array<{ name: string; apply: (view: EditorView) => void }> = [];
-
-      // Add fix action if available
-      if (warning.fix) {
-        const fixStart = warning.fix.range.start;
-        const fixEnd = warning.fix.range.end;
-        const fixReplacement = warning.fix.replacement;
-
-        actions.push({
-          name: 'Fix',
-          apply: (view: EditorView) => {
-            view.dispatch({
-              changes: { from: fixStart, to: fixEnd, insert: fixReplacement }
-            });
-          }
-        });
-      }
-
-      // Add docs action if we have a valid rule name (MD###)
-      if (ruleName.match(/^MD\d{3}$/i)) {
-        actions.push({
-          name: 'Docs',
-          apply: () => {
-            window.open(getRuleDocsUrl(ruleName), '_blank');
-          }
-        });
-      }
-
-      if (actions.length > 0) {
-        diagnostic.actions = actions;
-      }
-
-      diagnostics.push(diagnostic);
+// Create a linter extension factory - returns a linter bound to the plugin instance
+function createRumdlLinter(plugin: RumdlPlugin) {
+  return linter((view: EditorView) => {
+    if (!plugin.wasmReady || !plugin.linter) {
+      return [];
     }
-  }
 
-  // Add a "Fix All" footer diagnostic if there are multiple fixable issues
-  const fixableCount = warnings.filter(w => w.fix).length;
-  if (fixableCount > 1 && diagnostics.length > 0) {
-    // Use the same position as the first diagnostic for the "Fix All" footer
-    const firstDiag = diagnostics[0];
-    diagnostics.push({
-      from: firstDiag.from,
-      to: firstDiag.to,
-      severity: 'hint' as const,
-      message: '',
-      source: `${fixableCount} fixable issues`,
-      actions: [{
-        name: 'Fix All',
-        apply: (view: EditorView) => {
-          if (!pluginInstance?.linter) return;
-          const currentContent = view.state.doc.toString();
-          const fixed = pluginInstance.linter.fix(currentContent);
-          if (fixed !== currentContent) {
-            view.dispatch({
-              changes: { from: 0, to: currentContent.length, insert: fixed }
-            });
-          }
+    const content = view.state.doc.toString();
+    const result = plugin.linter.check(content);
+    const warnings: RumdlWarning[] = JSON.parse(result);
+
+    // Update status bar
+    plugin.updateStatusBar(warnings.length);
+
+    // Convert rumdl warnings to CodeMirror diagnostics
+    const diagnostics: Diagnostic[] = [];
+
+    for (const warning of warnings) {
+      // Convert line/column to document position
+      if (warning.line >= 1 && warning.line <= view.state.doc.lines) {
+        const line = view.state.doc.line(warning.line);
+        const from = line.from + Math.max(0, (warning.column || 1) - 1);
+        const to = line.to;
+
+        const ruleName = warning.rule_name || warning.rule || 'rumdl';
+        const diagnostic: Diagnostic = {
+          from,
+          to,
+          severity: 'warning',
+          message: warning.message,
+          source: ruleName,
+        };
+
+        // Build actions array
+        const actions: Array<{ name: string; apply: (view: EditorView) => void }> = [];
+
+        // Add fix action if available
+        if (warning.fix) {
+          const fixStart = warning.fix.range.start;
+          const fixEnd = warning.fix.range.end;
+          const fixReplacement = warning.fix.replacement;
+
+          actions.push({
+            name: 'Fix',
+            apply: (view: EditorView) => {
+              view.dispatch({
+                changes: { from: fixStart, to: fixEnd, insert: fixReplacement }
+              });
+            }
+          });
         }
-      }]
-    });
-  }
 
-  return diagnostics;
-}, {
-  delay: 500,
-});
+        // Add docs action if we have a valid rule name (MD###)
+        if (ruleName.match(/^MD\d{3}$/i)) {
+          actions.push({
+            name: 'Docs',
+            apply: () => {
+              window.open(getRuleDocsUrl(ruleName), '_blank');
+            }
+          });
+        }
+
+        if (actions.length > 0) {
+          diagnostic.actions = actions;
+        }
+
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    // Add a "Fix All" footer diagnostic if there are multiple fixable issues
+    const fixableCount = warnings.filter(w => w.fix).length;
+    if (fixableCount > 1 && diagnostics.length > 0) {
+      // Use the same position as the first diagnostic for the "Fix All" footer
+      const firstDiag = diagnostics[0];
+      diagnostics.push({
+        from: firstDiag.from,
+        to: firstDiag.to,
+        severity: 'hint' as const,
+        message: '',
+        source: `${fixableCount} fixable issues`,
+        actions: [{
+          name: 'Fix All',
+          apply: (view: EditorView) => {
+            if (!plugin.linter) return;
+            const currentContent = view.state.doc.toString();
+            const fixed = plugin.linter.fix(currentContent);
+            if (fixed !== currentContent) {
+              view.dispatch({
+                changes: { from: 0, to: currentContent.length, insert: fixed }
+              });
+            }
+          }
+        }]
+      });
+    }
+
+    return diagnostics;
+  }, {
+    delay: 500,
+  });
+}
 
 export default class RumdlPlugin extends Plugin {
   settings: RumdlPluginSettings;
@@ -268,9 +276,6 @@ export default class RumdlPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    // Set global plugin instance for the linter
-    pluginInstance = this;
-
     // Initialize WASM module by loading the .wasm file from plugin directory
     try {
       const pluginDir = this.manifest.dir;
@@ -287,7 +292,7 @@ export default class RumdlPlugin extends Plugin {
       this.wasmReady = true;
 
       const version = get_version();
-      console.log(`rumdl v${version} loaded`);
+      console.debug(`rumdl v${version} loaded`);
 
       // Setup format on save hook
       this.setupFormatOnSave();
@@ -305,7 +310,7 @@ export default class RumdlPlugin extends Plugin {
     }
 
     // Register CodeMirror linter extension (provides underlines + hover tooltips)
-    this.registerEditorExtension([rumdlLinter]);
+    this.registerEditorExtension([createRumdlLinter(this)]);
 
     // Update status bar when switching files
     this.registerEvent(
@@ -349,7 +354,6 @@ export default class RumdlPlugin extends Plugin {
   }
 
   onunload() {
-    pluginInstance = null;
     this.restoreOriginalSave();
     if (this.linter) {
       this.linter.free();
@@ -489,10 +493,10 @@ export default class RumdlPlugin extends Plugin {
   }
 
   setupFormatOnSave() {
-    const saveCommandDefinition = (this.app as any).commands?.commands?.['editor:save-file'];
+    const saveCommandDefinition = (this.app as unknown as InternalAppCommands).commands?.commands?.['editor:save-file'];
     this.originalSaveCallback = saveCommandDefinition?.checkCallback;
 
-    if (typeof this.originalSaveCallback === 'function') {
+    if (saveCommandDefinition && typeof this.originalSaveCallback === 'function') {
       saveCommandDefinition.checkCallback = (checking: boolean) => {
         if (checking) {
           return this.originalSaveCallback!(checking);
@@ -521,7 +525,7 @@ export default class RumdlPlugin extends Plugin {
 
   restoreOriginalSave() {
     if (this.originalSaveCallback) {
-      const saveCommandDefinition = (this.app as any).commands?.commands?.['editor:save-file'];
+      const saveCommandDefinition = (this.app as unknown as InternalAppCommands).commands?.commands?.['editor:save-file'];
       if (saveCommandDefinition) {
         saveCommandDefinition.checkCallback = this.originalSaveCallback;
       }
@@ -545,7 +549,7 @@ class LintResultsModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    contentEl.createEl('h2', { text: `Lint Results (${this.warnings.length} issues)` });
+    contentEl.createEl('h2', { text: `Lint results (${this.warnings.length} issues)` });
 
     const fixable = this.warnings.filter(w => w.fix).length;
     if (fixable > 0) {
@@ -598,7 +602,7 @@ class RulesModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    contentEl.createEl('h2', { text: `Available Rules (${this.rules.length})` });
+    contentEl.createEl('h2', { text: `Available rules (${this.rules.length})` });
 
     const list = contentEl.createEl('div', { cls: 'rumdl-rules' });
 
@@ -627,8 +631,6 @@ class RumdlSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'rumdl Settings' });
-
     // Plugin behavior settings
     new Setting(containerEl)
       .setName('Format on save')
@@ -651,7 +653,7 @@ class RumdlSettingTab extends PluginSettingTab {
       );
 
     // Configuration section
-    containerEl.createEl('h3', { text: 'Configuration' });
+    new Setting(containerEl).setName('Configuration').setHeading();
 
     const configDesc = this.plugin.configFilePath
       ? `Using config from: ${this.plugin.configFilePath}`
@@ -670,7 +672,7 @@ class RumdlSettingTab extends PluginSettingTab {
 
     // Only show rule settings if not using config file
     if (!this.plugin.settings.useConfigFile || !this.plugin.configFilePath) {
-      containerEl.createEl('h4', { text: 'Fallback settings', cls: 'rumdl-settings-fallback' });
+      new Setting(containerEl).setName('Fallback settings').setHeading();
 
       const noteEl = containerEl.createEl('p', { cls: 'rumdl-settings-note' });
       noteEl.setText('These are common options. For all 60+ rule configurations, use a ');
@@ -775,7 +777,7 @@ class RumdlSettingTab extends PluginSettingTab {
         );
 
       // Style options
-      containerEl.createEl('h4', { text: 'Style preferences' });
+      new Setting(containerEl).setName('Style preferences').setHeading();
 
       new Setting(containerEl)
         .setName('Heading style')
