@@ -165,8 +165,8 @@ function createRumdlLinter(plugin: RumdlPlugin) {
 }
 
 export default class RumdlPlugin extends Plugin {
-  settings: RumdlPluginSettings;
-  statusBarItem: HTMLElement;
+  settings!: RumdlPluginSettings;
+  statusBarItem!: HTMLElement;
   wasmReady = false;
   linter: Linter | null = null;
   originalSaveCallback: ((checking: boolean) => boolean) | undefined;
@@ -326,7 +326,7 @@ export default class RumdlPlugin extends Plugin {
     this.addCommand({
       id: 'lint-current-file',
       name: 'Check file',
-      editorCallback: (editor: Editor, view: MarkdownView) => {
+      editorCallback: (editor: Editor) => {
         this.lintEditor(editor);
       },
     });
@@ -335,7 +335,7 @@ export default class RumdlPlugin extends Plugin {
     this.addCommand({
       id: 'fix-all-issues',
       name: 'Fix all',
-      editorCallback: (editor: Editor, view: MarkdownView) => {
+      editorCallback: (editor: Editor) => {
         this.fixAll(editor);
       },
     });
@@ -788,8 +788,8 @@ class RumdlSettingTab extends PluginSettingTab {
             .addOption('atx', 'Hash style (# heading)')
             .addOption('setext', 'Setext (underlined)')
             .setValue(this.plugin.settings.headingStyle)
-            .onChange(async (value: 'atx' | 'setext' | 'consistent') => {
-              this.plugin.settings.headingStyle = value;
+            .onChange(async (value) => {
+              this.plugin.settings.headingStyle = value as 'atx' | 'setext' | 'consistent';
               await this.plugin.saveSettings();
             })
         );
@@ -804,8 +804,8 @@ class RumdlSettingTab extends PluginSettingTab {
             .addOption('asterisk', 'Asterisk (*)')
             .addOption('plus', 'Plus (+)')
             .setValue(this.plugin.settings.ulStyle)
-            .onChange(async (value: 'dash' | 'asterisk' | 'plus' | 'consistent') => {
-              this.plugin.settings.ulStyle = value;
+            .onChange(async (value) => {
+              this.plugin.settings.ulStyle = value as 'dash' | 'asterisk' | 'plus' | 'consistent';
               await this.plugin.saveSettings();
             })
         );
@@ -819,8 +819,8 @@ class RumdlSettingTab extends PluginSettingTab {
             .addOption('asterisk', 'Asterisk (*text*)')
             .addOption('underscore', 'Underscore (_text_)')
             .setValue(this.plugin.settings.emphasisStyle)
-            .onChange(async (value: 'asterisk' | 'underscore' | 'consistent') => {
-              this.plugin.settings.emphasisStyle = value;
+            .onChange(async (value) => {
+              this.plugin.settings.emphasisStyle = value as 'asterisk' | 'underscore' | 'consistent';
               await this.plugin.saveSettings();
             })
         );
@@ -834,8 +834,8 @@ class RumdlSettingTab extends PluginSettingTab {
             .addOption('asterisk', 'Asterisk (**text**)')
             .addOption('underscore', 'Underscore (__text__)')
             .setValue(this.plugin.settings.strongStyle)
-            .onChange(async (value: 'asterisk' | 'underscore' | 'consistent') => {
-              this.plugin.settings.strongStyle = value;
+            .onChange(async (value) => {
+              this.plugin.settings.strongStyle = value as 'asterisk' | 'underscore' | 'consistent';
               await this.plugin.saveSettings();
             })
         );

@@ -8,8 +8,17 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "lint": "eslint main.ts --max-warnings 0",
+    "lint:staged": "lint-staged",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --max-warnings 0"
+    ],
+    "*.md": [
+      "rumdl fmt"
+    ]
   },
   "keywords": [
     "obsidian",
@@ -29,6 +38,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-obsidianmd": "^0.1.9",
     "husky": "^9.0.0",
+    "lint-staged": "^16.2.7",
     "obsidian": "latest",
     "tslib": "2.4.0",
     "typescript": "^5.0.0"
