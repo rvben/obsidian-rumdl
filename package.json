@@ -1,6 +1,6 @@
 {
   "name": "obsidian-rumdl",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Markdown linting for Obsidian using rumdl",
   "main": "main.js",
   "scripts": {
