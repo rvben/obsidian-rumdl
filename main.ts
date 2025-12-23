@@ -672,7 +672,7 @@ class RumdlSettingTab extends PluginSettingTab {
 
     // Only show rule settings if not using config file
     if (!this.plugin.settings.useConfigFile || !this.plugin.configFilePath) {
-      new Setting(containerEl).setName('Fallback settings').setHeading();
+      new Setting(containerEl).setName('Fallback options').setHeading();
 
       const noteEl = containerEl.createEl('p', { cls: 'rumdl-settings-note' });
       noteEl.setText('These are common options. For all 60+ rule configurations, use a ');
