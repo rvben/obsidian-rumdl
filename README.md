@@ -21,6 +21,18 @@ Fast markdown linting for Obsidian using [rumdl](https://github.com/rvben/rumdl)
 
 ## Installation
 
+### Via BRAT (Recommended - while awaiting community plugin approval)
+
+The easiest way to install and get automatic updates while the [community plugin PR](https://github.com/obsidianmd/obsidian-releases/pull/8822) is pending:
+
+1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from the Community Plugins
+2. Open Obsidian Settings → BRAT
+3. Click **Add Beta plugin**
+4. Enter: `rvben/obsidian-rumdl`
+5. Enable the plugin in Settings → Community Plugins
+
+BRAT will automatically update the plugin when new releases are published.
+
 ### Manual Installation
 
 1. Download the latest release from [Releases](https://github.com/rvben/obsidian-rumdl/releases)
@@ -29,7 +41,7 @@ Fast markdown linting for Obsidian using [rumdl](https://github.com/rvben/rumdl)
 
 ### From Community Plugins
 
-Coming soon.
+Pending approval ([PR #8822](https://github.com/obsidianmd/obsidian-releases/pull/8822)). Use BRAT in the meantime for easy installation and updates.
 
 ## Usage
 
