@@ -652,8 +652,8 @@ class RumdlSettingTab extends PluginSettingTab {
         })
       );
 
-    // Configuration section
-    new Setting(containerEl).setName('Configuration').setHeading();
+    // Linting section
+    new Setting(containerEl).setName('Linting').setHeading();
 
     const configDesc = this.plugin.configFilePath
       ? `Using config from: ${this.plugin.configFilePath}`
@@ -672,10 +672,8 @@ class RumdlSettingTab extends PluginSettingTab {
 
     // Only show rule settings if not using config file
     if (!this.plugin.settings.useConfigFile || !this.plugin.configFilePath) {
-      new Setting(containerEl).setName('Fallback options').setHeading();
-
       const noteEl = containerEl.createEl('p', { cls: 'rumdl-settings-note' });
-      noteEl.setText('These are common options. For all 60+ rule configurations, use a ');
+      noteEl.setText('These settings apply when no config file is active. For full control of 60+ rules, use a ');
       noteEl.createEl('a', {
         text: '.rumdl.toml config file',
         href: 'https://github.com/rvben/rumdl#configuration',
@@ -776,9 +774,7 @@ class RumdlSettingTab extends PluginSettingTab {
             })
         );
 
-      // Style options
-      new Setting(containerEl).setName('Style preferences').setHeading();
-
+      // Style settings
       new Setting(containerEl)
         .setName('Heading style')
         .setDesc('Preferred heading format (# vs underline)')
