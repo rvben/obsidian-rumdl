@@ -276,6 +276,9 @@ export default class RumdlPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    // Settings tab - register early so it's always available
+    this.addSettingTab(new RumdlSettingTab(this.app, this));
+
     // Initialize WASM module by loading the .wasm file from plugin directory
     try {
       const pluginDir = this.manifest.dir;
@@ -348,9 +351,6 @@ export default class RumdlPlugin extends Plugin {
         this.showRules();
       },
     });
-
-    // Settings tab
-    this.addSettingTab(new RumdlSettingTab(this.app, this));
   }
 
   onunload() {
