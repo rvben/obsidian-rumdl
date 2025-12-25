@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import { copyFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync } from "fs";
 import { dirname, join } from "path";
 
 const banner = `/*
@@ -12,9 +12,9 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === "production";
 
-// Copy WASM file from rumdl-wasm npm package
+// Read WASM file and convert to base64
 const wasmSource = join(dirname(import.meta.url.replace("file://", "")), "node_modules/rumdl-wasm/rumdl_lib_bg.wasm");
-const wasmDest = "rumdl_lib_bg.wasm";
+const wasmBase64 = readFileSync(wasmSource).toString("base64");
 
 const context = await esbuild.context({
   banner: {
@@ -39,29 +39,20 @@ const context = await esbuild.context({
     ...builtins,
   ],
   format: "cjs",
-  target: "es2018",
+  target: "es2020",
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
   outfile: "main.js",
-  plugins: [
-    {
-      name: "wasm-loader",
-      setup(build) {
-        // Copy WASM file after build
-        build.onEnd(() => {
-          if (existsSync(wasmSource)) {
-            copyFileSync(wasmSource, wasmDest);
-            console.log("Copied WASM file to output directory");
-          }
-        });
-      },
-    },
-  ],
+  define: {
+    // Inject WASM as base64 string
+    "RUMDL_WASM_BASE64": JSON.stringify(wasmBase64),
+  },
 });
 
 if (prod) {
   await context.rebuild();
+  console.log("WASM embedded in main.js as base64");
   process.exit(0);
 } else {
   await context.watch();

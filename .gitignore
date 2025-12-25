@@ -1,12 +1,8 @@
-# Build output
+# Build output (main.js contains embedded WASM)
 main.js
 
-# WASM binary (copied from lib/ during build)
+# WASM binaries (embedded in main.js at build time)
 *.wasm
-
-# Local lib/ for development (until npm package is updated)
-# lib/rumdl_lib.js and lib/rumdl_lib.d.ts should be committed
-# lib/rumdl_lib_bg.wasm is ignored (binary, copied during build)
 
 # Dependencies
 node_modules/

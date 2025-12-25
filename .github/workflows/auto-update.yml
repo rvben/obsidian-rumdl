@@ -95,17 +95,21 @@ jobs:
       - name: Verify build
         if: steps.check.outputs.skip != 'true'
         run: |
-          # Copy WASM file
-          cp node_modules/rumdl-wasm/rumdl_lib_bg.wasm .
-
           # Verify all required files exist
-          for file in main.js manifest.json styles.css versions.json rumdl_lib_bg.wasm; do
+          for file in main.js manifest.json styles.css versions.json; do
             if [ ! -f "$file" ]; then
               echo "Error: Required file $file not found"
               exit 1
             fi
             echo "Found: $file ($(wc -c < "$file") bytes)"
           done
+          # Verify WASM is embedded in main.js (should be > 2MB)
+          MAIN_SIZE=$(wc -c < main.js)
+          if [ "$MAIN_SIZE" -lt 1000000 ]; then
+            echo "Error: main.js is too small ($MAIN_SIZE bytes), WASM may not be embedded"
+            exit 1
+          fi
+          echo "WASM embedded in main.js (size: $MAIN_SIZE bytes)"
 
       - name: Commit and tag
         if: steps.check.outputs.skip != 'true'

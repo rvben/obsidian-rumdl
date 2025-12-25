@@ -44,18 +44,19 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Copy WASM file
-        run: cp node_modules/rumdl-wasm/rumdl_lib_bg.wasm .
-
       - name: Verify build artifacts
         run: |
-          for file in main.js manifest.json styles.css versions.json rumdl_lib_bg.wasm; do
+          for file in main.js manifest.json styles.css versions.json; do
             if [ ! -f "$file" ]; then
               echo "Error: Required file $file not found"
               exit 1
             fi
             echo "Found: $file ($(wc -c < "$file") bytes)"
           done
+          # Verify WASM is embedded in main.js
+          if ! grep -q "RUMDL_WASM_BASE64" main.js 2>/dev/null && [ $(wc -c < main.js) -lt 1000000 ]; then
+            echo "Warning: main.js seems too small, WASM may not be embedded"
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -65,5 +66,4 @@ jobs:
             manifest.json
             styles.css
             versions.json
-            rumdl_lib_bg.wasm
           generate_release_notes: true

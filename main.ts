@@ -279,16 +279,11 @@ export default class RumdlPlugin extends Plugin {
     // Settings tab - register early so it's always available
     this.addSettingTab(new RumdlSettingTab(this.app, this));
 
-    // Initialize WASM module by loading the .wasm file from plugin directory
+    // Initialize WASM module from embedded base64
     try {
-      const pluginDir = this.manifest.dir;
-      const wasmPath = `${pluginDir}/rumdl_lib_bg.wasm`;
-
-      // Read the WASM file as binary using Obsidian's adapter
-      const wasmBuffer = await this.app.vault.adapter.readBinary(wasmPath);
-
-      // Initialize WASM synchronously with the buffer
-      initSync(wasmBuffer);
+      // Decode base64 WASM (injected by esbuild at build time)
+      const wasmBinary = Uint8Array.from(atob(RUMDL_WASM_BASE64), c => c.charCodeAt(0));
+      initSync(wasmBinary);
 
       // Create the linter instance with configuration
       await this.createLinter();
