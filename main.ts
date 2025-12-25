@@ -233,9 +233,14 @@ export default class RumdlPlugin extends Plugin {
         if (await this.app.vault.adapter.exists(configName)) {
           try {
             const tomlContent = await this.app.vault.adapter.read(configName);
-            const config = TOML.parse(tomlContent);
+            const parsed = TOML.parse(tomlContent) as Record<string, unknown>;
+            // Flatten: merge global section with top-level config
+            const globalSection = (parsed.global || {}) as Record<string, unknown>;
+            const config = { ...parsed, ...globalSection };
+            delete config.global;
             this.linter = new Linter(config);
             this.configFilePath = configName;
+            console.debug('rumdl: loaded config from', configName, config);
             return;
           } catch (e) {
             console.error(`rumdl: failed to parse ${configName}:`, e);
