@@ -1,0 +1,137 @@
+name: Auto-update on rumdl release
+
+on:
+  repository_dispatch:
+    types: [rumdl_release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'rumdl version to update to (without v prefix)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get rumdl version
+        id: version
+        run: |
+          if [ -n "${{ github.event.client_payload.version }}" ]; then
+            RUMDL_VERSION="${{ github.event.client_payload.version }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            RUMDL_VERSION="${{ inputs.version }}"
+          else
+            # Fetch latest from npm
+            RUMDL_VERSION=$(npm view rumdl-wasm version)
+          fi
+          echo "rumdl_version=$RUMDL_VERSION" >> $GITHUB_OUTPUT
+          echo "Updating to rumdl-wasm@$RUMDL_VERSION"
+
+      - name: Check if update needed
+        id: check
+        run: |
+          CURRENT=$(jq -r '.dependencies["rumdl-wasm"]' package.json | sed 's/[^0-9.]//g')
+          NEW="${{ steps.version.outputs.rumdl_version }}"
+
+          if [ "$CURRENT" = "$NEW" ]; then
+            echo "Already at version $NEW, skipping update"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Updating from $CURRENT to $NEW"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update rumdl-wasm
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          npm install rumdl-wasm@${{ steps.version.outputs.rumdl_version }}
+
+      - name: Bump plugin version
+        if: steps.check.outputs.skip != 'true'
+        id: bump
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(jq -r '.version' manifest.json)
+
+          # Bump patch version
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+          NEW_VERSION="$major.$minor.$((patch + 1))"
+
+          # Update manifest.json
+          jq --arg v "$NEW_VERSION" '.version = $v' manifest.json > manifest.json.tmp
+          mv manifest.json.tmp manifest.json
+
+          # Update package.json
+          jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+          # Update versions.json
+          OBSIDIAN_MIN=$(jq -r '.minAppVersion' manifest.json)
+          jq --arg v "$NEW_VERSION" --arg min "$OBSIDIAN_MIN" '.[$v] = $min' versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumped version to $NEW_VERSION"
+
+      - name: Build
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify build
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          # Copy WASM file
+          cp node_modules/rumdl-wasm/rumdl_lib_bg.wasm .
+
+          # Verify all required files exist
+          for file in main.js manifest.json styles.css versions.json rumdl_lib_bg.wasm; do
+            if [ ! -f "$file" ]; then
+              echo "Error: Required file $file not found"
+              exit 1
+            fi
+            echo "Found: $file ($(wc -c < "$file") bytes)"
+          done
+
+      - name: Commit and tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage changes
+          git add package.json package-lock.json manifest.json versions.json
+
+          # Commit
+          git commit -m "chore: update rumdl-wasm to ${{ steps.version.outputs.rumdl_version }}"
+
+          # Create tag (this triggers the release workflow)
+          git tag "${{ steps.bump.outputs.new_version }}"
+
+          # Push
+          git push origin main
+          git push origin "${{ steps.bump.outputs.new_version }}"
+
+      - name: Summary
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          echo "## Update Complete"
+          echo ""
+          echo "- Updated rumdl-wasm to: ${{ steps.version.outputs.rumdl_version }}"
+          echo "- New plugin version: ${{ steps.bump.outputs.new_version }}"
+          echo ""
+          echo "The release workflow will now create the GitHub release."
