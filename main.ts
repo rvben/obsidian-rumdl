@@ -243,7 +243,10 @@ export default class RumdlPlugin extends Plugin {
             console.debug('rumdl: loaded config from', configName, config);
             return;
           } catch (e) {
-            console.error(`rumdl: failed to parse ${configName}:`, e);
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            console.error(`rumdl: failed to load ${configName}:`, e);
+            new Notice(`rumdl: config error in ${configName}\n${errorMsg}`, 10000);
+            // Continue to try next config file or fall back to settings
           }
         }
       }
@@ -374,7 +377,12 @@ export default class RumdlPlugin extends Plugin {
   }
 
   settingsToToml(): string {
-    const lines: string[] = ['# rumdl configuration', '# Generated from Obsidian plugin settings', ''];
+    const lines: string[] = [
+      '# rumdl configuration',
+      '# Generated from Obsidian plugin settings',
+      '# Schema: https://raw.githubusercontent.com/rvben/rumdl/main/rumdl.schema.json',
+      '',
+    ];
     lines.push('[global]');
 
     if (this.settings.lineLength > 0) {
