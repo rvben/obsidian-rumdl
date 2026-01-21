@@ -1,7 +1,7 @@
 {
   "id": "rumdl",
   "name": "rumdl",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "minAppVersion": "0.15.0",
   "description": "Lint markdown files with rumdl - a fast markdown linter.",
   "author": "rvben",
