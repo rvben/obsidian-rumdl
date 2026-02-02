@@ -71,6 +71,7 @@ Create a `.rumdl.toml` in your vault root for project-wide settings:
 [global]
 disable = ["MD041", "MD013"]
 line-length = 120
+# flavor = "standard"  # Uncomment to disable Obsidian-specific syntax support
 
 [MD013]
 line-length = 100
@@ -81,12 +82,31 @@ indent = 4
 
 You can also export your current settings to a config file from the plugin settings.
 
+## Obsidian-Specific Syntax Support
+
+This plugin automatically enables **Obsidian flavor** which recognizes Obsidian-specific markdown syntax:
+
+| Syntax | Example | How it's handled |
+|--------|---------|------------------|
+| **Tags** | `#my-tag` | Not flagged as missing heading space (MD018) |
+| **Callouts** | `> [!NOTE]` | Recognized as valid blockquotes |
+| **Highlights** | `==highlighted==` | Not flagged as spacing issue |
+| **Comments** | `%%comment%%` | Content inside is skipped |
+| **Extended checkboxes** | `- [/]`, `- [-]`, `- [>]` | Recognized as valid task items |
+| **Dataview fields** | `field:: value` | Not flagged as consecutive spaces |
+| **Templater** | `<% code %>` | Recognized as template syntax |
+| **Wikilinks** | `[[link]]` | Properly handled |
+| **Block references** | `^block-id` | Not flagged |
+
+If you need standard markdown linting without Obsidian flavor, add `flavor = "standard"` to your `.rumdl.toml`.
+
 ## Default Settings for Obsidian
 
 The plugin comes with sensible defaults for Obsidian:
 
 - **MD041 (first-line-heading)** - Disabled by default (notes often have frontmatter)
 - **Line length** - Set to unlimited (prose writing has long lines)
+- **Obsidian flavor** - Enabled by default for Obsidian-specific syntax support
 
 ## Supported Rules
 

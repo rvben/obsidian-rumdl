@@ -238,6 +238,10 @@ export default class RumdlPlugin extends Plugin {
             const globalSection = (parsed.global || {}) as Record<string, unknown>;
             const config = { ...parsed, ...globalSection };
             delete config.global;
+            // Default to obsidian flavor if not specified in config
+            if (!config.flavor) {
+              config.flavor = 'obsidian';
+            }
             this.linter = new Linter(config);
             this.configFilePath = configName;
             console.debug('rumdl: loaded config from', configName, config);
@@ -254,7 +258,11 @@ export default class RumdlPlugin extends Plugin {
 
     // Fall back to plugin settings
     this.configFilePath = null;
-    const config: Record<string, unknown> = {};
+    const config: Record<string, unknown> = {
+      // Always use obsidian flavor for Obsidian-specific syntax support
+      // (tags, callouts, highlights, comments, Dataview, Templater, etc.)
+      flavor: 'obsidian',
+    };
 
     if (this.settings.disabledRules.length > 0) {
       config.disable = this.settings.disabledRules;
