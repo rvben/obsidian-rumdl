@@ -61,10 +61,100 @@ function getRuleDocsUrl(ruleName: string): string {
   return `https://github.com/rvben/rumdl/blob/main/docs/${ruleName.toLowerCase()}.md`;
 }
 
+/**
+ * Detect if an EditorView is in an isolated/embedded context (like a table cell).
+ *
+ * In Obsidian's live preview mode, table cells get their own CodeMirror EditorView
+ * instances. Linting these isolated cells causes false positives for document-level
+ * rules like MD041 (first line heading) since the linter sees just the cell content.
+ *
+ * This function uses multiple detection strategies:
+ * 1. DOM hierarchy analysis - check if editor is inside embed/table containers
+ * 2. Content heuristics - detect table-cell-like content patterns
+ * 3. View root analysis - check if this is a nested/embedded view
+ */
+function isIsolatedEditorContext(view: EditorView): boolean {
+  // Strategy 1: DOM hierarchy analysis
+  // Check if the editor's DOM is inside an embedded context
+  const editorDom = view.dom;
+
+  // Table cell detection - check for table-related parent elements
+  const tableParent = editorDom.closest('table, td, th, .cm-table-cell, .table-cell-wrapper');
+  if (tableParent) {
+    return true;
+  }
+
+  // Embed block detection - Obsidian uses these for various embedded editors
+  const embedParent = editorDom.closest('.cm-embed-block, .markdown-embed, .internal-embed');
+  if (embedParent) {
+    return true;
+  }
+
+  // Strategy 2: Check if we're NOT in a main editor context
+  // Main document editors are inside workspace-leaf containers
+  const workspaceLeaf = editorDom.closest('.workspace-leaf');
+  const markdownView = editorDom.closest('.markdown-source-view, .markdown-reading-view');
+
+  // If we're not in a workspace leaf but the editor exists, it's likely embedded
+  // However, we need to be careful not to flag the main editor
+  if (!workspaceLeaf && !markdownView) {
+    // Additional check: main editors have .cm-editor as a direct structure
+    // Embedded editors often have wrapper classes
+    const cmEditor = editorDom.closest('.cm-editor');
+    if (cmEditor) {
+      // Check if this cm-editor is inside a known embed wrapper
+      const parent = cmEditor.parentElement;
+      if (parent && (
+        parent.classList.contains('cm-embed-block') ||
+        parent.classList.contains('table-cell-wrapper') ||
+        parent.closest('.cm-line')  // Editor nested inside a line = embedded
+      )) {
+        return true;
+      }
+    }
+  }
+
+  // Strategy 3: Content heuristics for edge cases
+  // Table cells typically have specific patterns
+  const content = view.state.doc.toString();
+
+  // Single-line content that looks like a table cell
+  // (very short, no document structure, possibly has pipe boundaries)
+  if (!content.includes('\n') && content.length < 200) {
+    // Check if it looks like table cell content
+    // - No markdown headings
+    // - No frontmatter
+    // - No list markers at start
+    const trimmed = content.trim();
+    const hasDocStructure =
+      trimmed.startsWith('#') ||           // Heading
+      trimmed.startsWith('---') ||         // Frontmatter/HR
+      trimmed.startsWith('- ') ||          // List
+      trimmed.startsWith('* ') ||          // List
+      trimmed.startsWith('> ') ||          // Blockquote
+      trimmed.startsWith('```');           // Code fence
+
+    // If no document structure and very short, likely a table cell
+    // But only flag if we also have some DOM uncertainty
+    if (!hasDocStructure && !workspaceLeaf) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Create a linter extension factory - returns a linter bound to the plugin instance
 function createRumdlLinter(plugin: RumdlPlugin) {
   return linter((view: EditorView) => {
     if (!plugin.wasmReady || !plugin.linter) {
+      return [];
+    }
+
+    // Skip linting for isolated editor contexts (table cells, embeds)
+    // These are transient editing contexts where document-level rules
+    // produce false positives. The full document is linted separately.
+    if (isIsolatedEditorContext(view)) {
       return [];
     }
 
