@@ -3,6 +3,10 @@ name: Auto-update on rumdl release
 on:
   repository_dispatch:
     types: [rumdl_release]
+  schedule:
+    # Poll for new rumdl-wasm releases every 6 hours as a fallback
+    # in case repository_dispatch fails (e.g. expired token)
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       version:
