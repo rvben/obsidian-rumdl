@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { App, Editor, MarkdownFileInfo, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, setIcon } from 'obsidian';
 import { initSync, Linter, get_version, get_available_rules } from 'rumdl-wasm';
 import * as TOML from '@iarna/toml';
 import { EditorView } from '@codemirror/view';
@@ -159,7 +159,8 @@ function createRumdlLinter(plugin: RumdlPlugin) {
     }
 
     const content = view.state.doc.toString();
-    const result = plugin.linter.check(content);
+    const filePath = plugin.filePathForEditorView(view);
+    const result = plugin.linter.check(content, filePath);
     const warnings: RumdlWarning[] = JSON.parse(result);
 
     // Update status bar
@@ -237,7 +238,8 @@ function createRumdlLinter(plugin: RumdlPlugin) {
           apply: (view: EditorView) => {
             if (!plugin.linter) return;
             const currentContent = view.state.doc.toString();
-            const fixed = plugin.linter.fix(currentContent);
+            const fixedFilePath = plugin.filePathForEditorView(view);
+            const fixed = plugin.linter.fix(currentContent, fixedFilePath);
             if (fixed !== currentContent) {
               view.dispatch({
                 changes: { from: 0, to: currentContent.length, insert: fixed }
@@ -261,6 +263,37 @@ export default class RumdlPlugin extends Plugin {
   linter: Linter | null = null;
   originalSaveCallback: ((checking: boolean) => boolean) | undefined;
   configFilePath: string | null = null;
+  // Caches the TFile backing each CodeMirror EditorView so the linter can
+  // pass the vault-relative path to WASM for exclude-pattern matching.
+  // Populated lazily on lookup + eagerly on `file-open` / `active-leaf-change`.
+  private editorViewFiles: WeakMap<EditorView, TFile> = new WeakMap();
+
+  /** Resolve the vault-relative path for a CM6 EditorView, or null if unknown. */
+  filePathForEditorView(view: EditorView): string | null {
+    const cached = this.editorViewFiles.get(view);
+    if (cached) return cached.path;
+    // Fallback: background leaves (not yet seen via events) or newly-opened views.
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      const mdView = leaf.view as MarkdownView;
+      const cm = (mdView.editor as unknown as { cm?: EditorView }).cm;
+      if (cm === view && mdView.file) {
+        this.editorViewFiles.set(view, mdView.file);
+        return mdView.file.path;
+      }
+    }
+    return null;
+  }
+
+  /** Refresh the EditorView→TFile map from all open markdown leaves. */
+  private refreshEditorViewFiles() {
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      const mdView = leaf.view as MarkdownView;
+      const cm = (mdView.editor as unknown as { cm?: EditorView }).cm;
+      if (cm && mdView.file) {
+        this.editorViewFiles.set(cm, mdView.file);
+      }
+    }
+  }
 
   updateStatusBar(issueCount: number | null) {
     if (!this.statusBarItem) return;
@@ -292,7 +325,7 @@ export default class RumdlPlugin extends Plugin {
         .setTitle('View issues')
         .setDisabled(!view)
         .onClick(() => {
-          if (view) this.lintEditor(view.editor);
+          if (view) this.lintEditor(view.editor, view.file?.path ?? null);
         })
     );
 
@@ -301,7 +334,7 @@ export default class RumdlPlugin extends Plugin {
         .setTitle('Fix all issues')
         .setDisabled(!view)
         .onClick(() => {
-          if (view) this.fixAll(view.editor);
+          if (view) this.fixAll(view.editor, view.file?.path ?? null);
         })
     );
 
@@ -416,9 +449,10 @@ export default class RumdlPlugin extends Plugin {
     // Register CodeMirror linter extension (provides underlines + hover tooltips)
     this.registerEditorExtension([createRumdlLinter(this)]);
 
-    // Update status bar when switching files
+    // Update status bar + refresh EditorView→TFile map when switching files.
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
+        this.refreshEditorViewFiles();
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view) {
           this.updateStatusBar(null);
@@ -426,12 +460,21 @@ export default class RumdlPlugin extends Plugin {
       })
     );
 
+    // Refresh the EditorView→TFile map whenever a file is opened so
+    // subsequent lint calls resolve paths via WeakMap (O(1)) instead of
+    // iterating open leaves.
+    this.registerEvent(
+      this.app.workspace.on('file-open', () => {
+        this.refreshEditorViewFiles();
+      })
+    );
+
     // Command: Lint current file (shows modal with results)
     this.addCommand({
       id: 'lint-current-file',
       name: 'Check file',
-      editorCallback: (editor: Editor) => {
-        this.lintEditor(editor);
+      editorCallback: (editor: Editor, ctx: MarkdownView | MarkdownFileInfo) => {
+        this.lintEditor(editor, ctx.file?.path ?? null);
       },
     });
 
@@ -439,8 +482,8 @@ export default class RumdlPlugin extends Plugin {
     this.addCommand({
       id: 'fix-all-issues',
       name: 'Fix all',
-      editorCallback: (editor: Editor) => {
-        this.fixAll(editor);
+      editorCallback: (editor: Editor, ctx: MarkdownView | MarkdownFileInfo) => {
+        this.fixAll(editor, ctx.file?.path ?? null);
       },
     });
 
@@ -535,14 +578,14 @@ export default class RumdlPlugin extends Plugin {
     }
   }
 
-  lintEditor(editor: Editor, quiet = false) {
+  lintEditor(editor: Editor, filePath: string | null, quiet = false) {
     if (!this.wasmReady || !this.linter) {
       new Notice('Linter is not ready yet');
       return;
     }
 
     const content = editor.getValue();
-    const result = this.linter.check(content);
+    const result = this.linter.check(content, filePath);
     const warnings: RumdlWarning[] = JSON.parse(result);
 
     this.updateStatusBar(warnings.length);
@@ -553,19 +596,19 @@ export default class RumdlPlugin extends Plugin {
       }
     } else {
       if (!quiet) {
-        new LintResultsModal(this.app, warnings, editor, this).open();
+        new LintResultsModal(this.app, warnings, editor, this, filePath).open();
       }
     }
   }
 
-  fixAll(editor: Editor) {
+  fixAll(editor: Editor, filePath: string | null) {
     if (!this.wasmReady || !this.linter) {
       new Notice('Linter is not ready yet');
       return;
     }
 
     const content = editor.getValue();
-    const fixed = this.linter.fix(content);
+    const fixed = this.linter.fix(content, filePath);
 
     if (fixed !== content) {
       const cursor = editor.getCursor();
@@ -573,7 +616,7 @@ export default class RumdlPlugin extends Plugin {
       editor.setCursor(cursor);
 
       // Re-lint to show remaining issues
-      const result = this.linter.check(fixed);
+      const result = this.linter.check(fixed, filePath);
       const remaining: RumdlWarning[] = JSON.parse(result);
 
       this.updateStatusBar(remaining.length);
@@ -614,7 +657,7 @@ export default class RumdlPlugin extends Plugin {
           if (view?.file?.extension === 'md') {
             const editor = view.editor;
             const content = editor.getValue();
-            const fixed = this.linter.fix(content);
+            const fixed = this.linter.fix(content, view.file.path);
 
             if (fixed !== content) {
               const cursor = editor.getCursor();
@@ -643,12 +686,14 @@ class LintResultsModal extends Modal {
   warnings: RumdlWarning[];
   editor: Editor;
   plugin: RumdlPlugin;
+  filePath: string | null;
 
-  constructor(app: App, warnings: RumdlWarning[], editor: Editor, plugin: RumdlPlugin) {
+  constructor(app: App, warnings: RumdlWarning[], editor: Editor, plugin: RumdlPlugin, filePath: string | null) {
     super(app);
     this.warnings = warnings;
     this.editor = editor;
     this.plugin = plugin;
+    this.filePath = filePath;
   }
 
   onOpen() {
@@ -661,7 +706,7 @@ class LintResultsModal extends Modal {
     if (fixable > 0) {
       const fixAllBtn = contentEl.createEl('button', { text: `Fix all ${fixable} auto-fixable issues` });
       fixAllBtn.addEventListener('click', () => {
-        this.plugin.fixAll(this.editor);
+        this.plugin.fixAll(this.editor, this.filePath);
         this.close();
       });
     }
