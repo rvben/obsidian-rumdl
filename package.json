@@ -1,6 +1,6 @@
 {
   "name": "obsidian-rumdl",
-  "version": "0.0.113",
+  "version": "0.0.114",
   "description": "Markdown linting for Obsidian using rumdl",
   "main": "main.js",
   "type": "module",
@@ -45,6 +45,6 @@
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5",
-    "rumdl-wasm": "^0.2.8"
+    "rumdl-wasm": "^0.2.9"
   }
 }
