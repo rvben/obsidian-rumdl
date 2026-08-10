@@ -4,6 +4,22 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+  # Called directly by auto-update.yml. Invoking this workflow rather than
+  # relying on a tag push to trigger it means the caller can see whether the
+  # release succeeded, which is what lets a failed release be retried instead
+  # of silently skipped. It also removes the need for a personal access token:
+  # a tag push made with the default GITHUB_TOKEN deliberately does not start
+  # another workflow, but a workflow_call does.
+  workflow_call:
+    inputs:
+      version:
+        description: 'Plugin version to release'
+        required: true
+        type: string
+      sha:
+        description: 'Commit to build, tag and release'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,29 +30,60 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Under workflow_call the default checkout ref is the CALLER's
+          # commit, which predates the version bump the caller just pushed, so
+          # the commit to build is passed explicitly. On a tag push inputs is
+          # empty and github.sha is the tagged commit.
+          ref: ${{ inputs.sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      # Keyed off the inputs context rather than github.event_name: under
+      # workflow_call the event name is the CALLER's event (schedule or
+      # repository_dispatch), so a push-vs-call test would take the wrong
+      # branch. The inputs context is populated for workflow_call and empty for
+      # a tag push.
+      #
+      # Requiring the version to match the checked-out manifest.json and
+      # package.json is also what catches a wrong ref: building the wrong tree
+      # fails here loudly instead of publishing a release whose contents do not
+      # match its version.
       - name: Validate version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          set -euo pipefail
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: '${VERSION}' is not a valid release version" >&2
+            exit 1
+          fi
+
           MANIFEST_VERSION=$(jq -r '.version' manifest.json)
           PACKAGE_VERSION=$(jq -r '.version' package.json)
 
-          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "Error: Tag version ($TAG_VERSION) does not match manifest.json ($MANIFEST_VERSION)"
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Error: release version ($VERSION) does not match manifest.json ($MANIFEST_VERSION)" >&2
             exit 1
           fi
 
-          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "Error: Tag version ($TAG_VERSION) does not match package.json ($PACKAGE_VERSION)"
+          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Error: release version ($VERSION) does not match package.json ($PACKAGE_VERSION)" >&2
             exit 1
           fi
 
-          echo "Version validated: $TAG_VERSION"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version validated: $VERSION"
 
       - name: Install dependencies
         run: npm ci
@@ -46,21 +93,30 @@ jobs:
 
       - name: Verify build artifacts
         run: |
+          set -euo pipefail
           for file in main.js manifest.json styles.css versions.json; do
             if [ ! -f "$file" ]; then
-              echo "Error: Required file $file not found"
+              echo "Error: Required file $file not found" >&2
               exit 1
             fi
             echo "Found: $file ($(wc -c < "$file") bytes)"
           done
-          # Verify WASM is embedded in main.js
-          if ! grep -q "RUMDL_WASM_BASE64" main.js 2>/dev/null && [ $(wc -c < main.js) -lt 1000000 ]; then
-            echo "Warning: main.js seems too small, WASM may not be embedded"
+          # The WASM is inlined into main.js, so a build that produced a small
+          # main.js shipped a plugin that cannot lint anything.
+          MAIN_SIZE=$(wc -c < main.js)
+          if [ "$MAIN_SIZE" -lt 1000000 ]; then
+            echo "Error: main.js is too small ($MAIN_SIZE bytes), WASM may not be embedded" >&2
+            exit 1
           fi
+          echo "WASM embedded in main.js (size: $MAIN_SIZE bytes)"
 
+      # Creating the release also creates the tag when it does not exist yet,
+      # so the tag records what shipped rather than triggering the shipping.
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ inputs.sha || github.sha }}
           files: |
             main.js
             manifest.json
