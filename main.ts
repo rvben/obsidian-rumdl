@@ -310,9 +310,10 @@ export default class RumdlPlugin extends Plugin {
     const cached = this.editorViewFiles.get(view);
     if (cached) return cached.path;
     // Fallback: background leaves (not yet seen via events) or newly-opened views.
+    // A deferred leaf's view has no editor yet, hence the optional chaining.
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
       const mdView = leaf.view as MarkdownView;
-      const cm = (mdView.editor as unknown as { cm?: EditorView }).cm;
+      const cm = (mdView.editor as unknown as { cm?: EditorView } | undefined)?.cm;
       if (cm === view && mdView.file) {
         this.editorViewFiles.set(view, mdView.file);
         return mdView.file.path;
@@ -325,7 +326,7 @@ export default class RumdlPlugin extends Plugin {
   private refreshEditorViewFiles() {
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
       const mdView = leaf.view as MarkdownView;
-      const cm = (mdView.editor as unknown as { cm?: EditorView }).cm;
+      const cm = (mdView.editor as unknown as { cm?: EditorView } | undefined)?.cm;
       if (cm && mdView.file) {
         this.editorViewFiles.set(cm, mdView.file);
       }
