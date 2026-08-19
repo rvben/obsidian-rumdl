@@ -9,7 +9,7 @@ Fast markdown linting for Obsidian using [rumdl](https://github.com/rvben/rumdl)
 - **Format on save** - Automatically fix all issues when saving
 - **Status bar** - See issue count at a glance, click to view details
 - **50+ lint rules** - Comprehensive markdown style checking
-- **Config file support** - Use `.rumdl.toml` for project-wide settings
+- **Config file support** - Use `.rumdl.toml` for project-wide settings, with `extends` to share a base config
 - **Rule documentation** - Quick links to rule docs from settings and tooltips
 
 ## Screenshots
@@ -81,6 +81,19 @@ indent = 4
 ```
 
 You can also export your current settings to a config file from the plugin settings.
+
+### Sharing a base config with `extends`
+
+A config file can build on another one with `extends`, exactly as with the rumdl CLI: the base is loaded first and the extending file's settings are merged on top. The path is resolved relative to the file that declares it, and `~/`, `$VAR` and absolute paths work too.
+
+```toml
+extends = "../shared/rumdl-base.toml"
+
+[global]
+extend-disable = ["MD041"]
+```
+
+Targets inside the vault load everywhere. Targets outside the vault (`../`, `~/`, `$VAR`, absolute paths) can only be read by the desktop app; on mobile the plugin reports the config error and falls back to its own settings. The plugin settings show the whole chain of files in use.
 
 ## Obsidian-Specific Syntax Support
 

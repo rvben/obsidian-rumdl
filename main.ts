@@ -1,6 +1,5 @@
-import { App, Editor, MarkdownFileInfo, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, setIcon } from 'obsidian';
-import { initSync, Linter, get_version, get_available_rules } from 'rumdl-wasm';
-import * as TOML from '@iarna/toml';
+import { App, Editor, FileSystemAdapter, MarkdownFileInfo, MarkdownView, Menu, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, normalizePath, setIcon } from 'obsidian';
+import { initSync, Linter, get_version, get_available_rules, resolve_config_chain } from 'rumdl-wasm';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
 
@@ -55,6 +54,42 @@ const DEFAULT_SETTINGS: RumdlPluginSettings = {
 };
 
 const CONFIG_FILE_NAMES = ['.rumdl.toml', 'rumdl.toml'];
+
+/** Status returned by rumdl's `resolve_config_chain` while walking an `extends` chain. */
+type ConfigChainStatus =
+  | { status: 'need-file'; path: string }
+  | { status: 'complete'; files: string[] }
+  | { status: 'error'; message: string };
+
+/**
+ * Node builtins for reading `extends` targets outside the vault, resolved only
+ * when called. A static import would be evaluated when the plugin loads, which
+ * fails on mobile, where there is no Node runtime; callers check
+ * `Platform.isDesktopApp` first.
+ */
+/* eslint-disable @typescript-eslint/no-require-imports */
+const desktopNode = {
+  fs: () => require('fs') as typeof import('fs'),
+  path: () => require('path') as typeof import('path'),
+  os: () => require('os') as typeof import('os'),
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+/**
+ * Whether a path rumdl asks for while following `extends` lies outside the
+ * vault. Paths are as rumdl resolved them: vault-relative for targets under the
+ * vault root, and absolute, `../`-prefixed or still `~/`-prefixed (no home was
+ * available to expand it) for everything else.
+ */
+function isOutsideVault(path: string): boolean {
+  return (
+    path.startsWith('/') ||
+    path.startsWith('../') ||
+    path === '..' ||
+    path.startsWith('~/') ||
+    /^[A-Za-z]:[\\/]/.test(path)
+  );
+}
 
 // Generate URL for rule documentation
 function getRuleDocsUrl(ruleName: string): string {
@@ -263,6 +298,8 @@ export default class RumdlPlugin extends Plugin {
   linter: Linter | null = null;
   originalSaveCallback: ((checking: boolean) => boolean) | undefined;
   configFilePath: string | null = null;
+  /** Every config file the active linter was built from, root first; empty without a config file. */
+  configChain: string[] = [];
   // Caches the TFile backing each CodeMirror EditorView so the linter can
   // pass the vault-relative path to WASM for exclude-pattern matching.
   // Populated lazily on lookup + eagerly on `file-open` / `active-leaf-change`.
@@ -355,19 +392,16 @@ export default class RumdlPlugin extends Plugin {
       for (const configName of CONFIG_FILE_NAMES) {
         if (await this.app.vault.adapter.exists(configName)) {
           try {
-            const tomlContent = await this.app.vault.adapter.read(configName);
-            const parsed = TOML.parse(tomlContent) as Record<string, unknown>;
-            // Flatten: merge global section with top-level config
-            const globalSection = (parsed.global || {}) as Record<string, unknown>;
-            const config = { ...parsed, ...globalSection };
-            delete config.global;
-            // Default to obsidian flavor if not specified in config
-            if (!config.flavor) {
-              config.flavor = 'obsidian';
-            }
-            this.linter = new Linter(config);
+            const { linter, chain } = await this.linterFromConfigFile(configName);
+            this.linter = linter;
             this.configFilePath = configName;
-            console.debug('rumdl: loaded config from', configName, config);
+            this.configChain = chain;
+            console.debug('rumdl: loaded config from', chain.join(' -> '), JSON.parse(linter.get_config()));
+            const warnings: string[] = JSON.parse(linter.get_config_warnings());
+            if (warnings.length > 0) {
+              console.warn('rumdl: config warnings:', warnings);
+              new Notice(`rumdl: ${configName} has ${warnings.length} config warning(s)\n${warnings.join('\n')}`, 10000);
+            }
             return;
           } catch (e) {
             const errorMsg = e instanceof Error ? e.message : String(e);
@@ -381,6 +415,7 @@ export default class RumdlPlugin extends Plugin {
 
     // Fall back to plugin settings
     this.configFilePath = null;
+    this.configChain = [];
     const config: Record<string, unknown> = {
       // Always use obsidian flavor for Obsidian-specific syntax support
       // (tags, callouts, highlights, comments, Dataview, Templater, etc.)
@@ -410,6 +445,77 @@ export default class RumdlPlugin extends Plugin {
     }
 
     this.linter = new Linter(config);
+  }
+
+  /**
+   * Build a linter from a vault-root config file and the `extends` chain it
+   * declares. rumdl resolves each `extends` value and merges the chain exactly
+   * as the CLI does; this method only reads the files it asks for, one round
+   * trip per link, since the vault adapter is async.
+   */
+  async linterFromConfigFile(root: string): Promise<{ linter: Linter; chain: string[] }> {
+    const files: Record<string, string | null> = { [root]: await this.app.vault.adapter.read(root) };
+    const request = () => ({
+      root,
+      files,
+      env: this.configEnvironment(),
+      home: this.homeDirectory(),
+      'default-flavor': 'obsidian',
+    });
+    let chain: string[];
+    for (;;) {
+      const status: ConfigChainStatus = JSON.parse(resolve_config_chain(request()));
+      if (status.status === 'need-file') {
+        files[status.path] = await this.readConfigFile(status.path);
+      } else if (status.status === 'error') {
+        throw new Error(status.message);
+      } else {
+        chain = status.files;
+        break;
+      }
+    }
+    return { linter: Linter.from_config_files(request()), chain };
+  }
+
+  /**
+   * Read a file rumdl asks for while following `extends`: through the vault
+   * adapter when it is inside the vault, through Node's fs on desktop when it
+   * is not. Returns null for a file that does not exist, which rumdl reports
+   * as a missing `extends` target.
+   */
+  async readConfigFile(path: string): Promise<string | null> {
+    if (!isOutsideVault(path)) {
+      const vaultPath = normalizePath(path);
+      if (!(await this.app.vault.adapter.exists(vaultPath))) return null;
+      return this.app.vault.adapter.read(vaultPath);
+    }
+    const adapter = this.app.vault.adapter;
+    if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) {
+      throw new Error(`extends target '${path}' is outside the vault, which only the desktop app can read`);
+    }
+    const absolute = desktopNode.path().resolve(adapter.getBasePath(), path);
+    try {
+      return await desktopNode.fs().promises.readFile(absolute, 'utf8');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw e;
+    }
+  }
+
+  /** Environment variables for `$VAR` in `extends`; the desktop app has the process's, mobile has none. */
+  configEnvironment(): Record<string, string> {
+    if (!Platform.isDesktopApp) return {};
+    const env: Record<string, string> = {};
+    for (const [name, value] of Object.entries(process.env)) {
+      if (value !== undefined) env[name] = value;
+    }
+    return env;
+  }
+
+  /** The home directory for `~/` in `extends`; undefined on mobile, where `~/` is left as written. */
+  homeDirectory(): string | undefined {
+    if (!Platform.isDesktopApp) return undefined;
+    return desktopNode.os().homedir();
   }
 
   async onload() {
@@ -806,8 +912,9 @@ class RumdlSettingTab extends PluginSettingTab {
     // Linting section
     new Setting(containerEl).setName('Linting').setHeading();
 
-    const configDesc = this.plugin.configFilePath
-      ? `Using config from: ${this.plugin.configFilePath}`
+    // The chain reads root first, each file followed by the one it extends.
+    const configDesc = this.plugin.configChain.length > 0
+      ? `Using config from: ${this.plugin.configChain.join(' -> ')}`
       : 'No config file found. Using settings below.';
 
     new Setting(containerEl)
