@@ -12,12 +12,7 @@ Fast markdown linting for Obsidian using [rumdl](https://github.com/rvben/rumdl)
 - **Config file support** - Use `.rumdl.toml` for project-wide settings, with `extends` to share a base config
 - **Rule documentation** - Quick links to rule docs from settings and tooltips
 
-## Screenshots
-
-<!-- TODO: Add screenshots -->
-<!-- ![Status Bar](screenshots/status-bar.png) -->
-<!-- ![Inline Diagnostics](screenshots/diagnostics.png) -->
-<!-- ![Settings](screenshots/settings.png) -->
+Requires Obsidian 1.13.1 or newer; works on desktop and mobile.
 
 ## Installation
 
@@ -93,7 +88,7 @@ extends = "../shared/rumdl-base.toml"
 extend-disable = ["MD041"]
 ```
 
-Targets inside the vault load everywhere. Targets outside the vault (`../`, `~/`, `$VAR`, absolute paths) can only be read by the desktop app; on mobile the plugin reports the config error and falls back to its own settings. The plugin settings show the whole chain of files in use.
+Targets inside the vault load everywhere. Targets outside the vault (`../`, `~/`, `$VAR`, absolute paths) can only be read by the desktop app, where the plugin reads them directly from disk with Node's file system API; this is the one place the plugin touches files outside the vault, and it only ever reads them. On mobile the plugin reports the config error and falls back to its own settings. The plugin settings show the whole chain of files in use.
 
 ## Obsidian-Specific Syntax Support
 
@@ -123,7 +118,7 @@ The plugin comes with sensible defaults for Obsidian:
 
 ## Supported Rules
 
-rumdl supports 50+ lint rules. Click the docs icon next to each rule in settings to learn more.
+rumdl supports 50+ lint rules. Open **Rules** in the plugin settings to search them, toggle them, and follow the **Docs** link of each rule to learn more.
 
 Common rules include:
 
