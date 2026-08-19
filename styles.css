@@ -81,281 +81,148 @@
   font-size: var(--font-ui-smaller);
 }
 
-/* Editor line highlighting */
-.rumdl-warning-line {
-  background-color: rgba(255, 180, 0, 0.12);
+/*
+ * Lint hover tooltip. CodeMirror renders it as
+ *   div.cm-tooltip.cm-tooltip-hover > ul.cm-tooltip-lint > li.cm-diagnostic
+ * and styles it from an adopted stylesheet, which wins ties in the cascade.
+ * Every selector below is therefore one class more specific than the
+ * `.ͼN .cm-…` selectors it overrides, and the host is matched through :has()
+ * so that hover tooltips of other plugins keep their own look.
+ */
+.cm-tooltip.cm-tooltip-hover:has(> .cm-tooltip-lint) {
+  pointer-events: auto;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  max-width: 400px;
+  font-family: var(--font-interface);
+}
+
+.cm-tooltip-hover .cm-tooltip-lint {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  background-color: transparent;
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: transparent;
+  white-space: pre-wrap;
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic:last-child {
+  border-bottom: none;
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic.cm-diagnostic-warning {
   border-left: 3px solid var(--color-orange);
 }
 
-/* Dark theme adjustments */
-.theme-dark .rumdl-warning-line {
-  background-color: rgba(255, 180, 0, 0.08);
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic.cm-diagnostic-error {
+  border-left: 3px solid var(--color-red);
 }
 
-/* Hover tooltip styles */
-.rumdl-tooltip {
-  padding: 8px 12px;
-  max-width: 400px;
-  font-size: var(--font-ui-small);
-  background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  color: var(--text-normal);
-}
-
-.rumdl-tooltip-item {
-  margin-bottom: 8px;
-}
-
-.rumdl-tooltip-item:last-child {
-  margin-bottom: 0;
-}
-
-.rumdl-tooltip-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.rumdl-tooltip-header strong {
-  color: var(--text-normal);
-}
-
-.rumdl-tooltip-fixable {
-  color: var(--text-accent);
-  font-size: 0.85em;
-}
-
-.rumdl-tooltip-message {
-  color: var(--text-muted);
-}
-
-/* CodeMirror lint tooltip container */
-.cm-tooltip-lint {
-  pointer-events: auto !important;
-  background-color: var(--background-primary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  max-width: 400px !important;
-}
-
-/* Individual diagnostic item */
-.cm-diagnostic {
-  pointer-events: auto !important;
-  padding: 12px 14px !important;
-  border-bottom: 1px solid var(--background-modifier-border) !important;
-  margin: 0 !important;
-  background: transparent !important;
-  display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: wrap !important;
-}
-
-/* Make source and text take full row */
-.cm-diagnostic .cm-diagnosticSource,
-.cm-diagnostic .cm-diagnosticText {
-  flex-basis: 100% !important;
-}
-
-.cm-diagnostic:last-child {
-  border-bottom: none !important;
-}
-
-/* Warning indicator bar on left */
-.cm-diagnostic-warning {
-  border-left: 3px solid var(--color-orange) !important;
-}
-
-.cm-diagnostic-error {
-  border-left: 3px solid var(--color-red) !important;
-}
-
-/* Rule source label - show at top */
-.cm-diagnosticSource {
-  order: -1 !important;
-  font-size: 11px !important;
-  color: var(--text-muted) !important;
-  background-color: var(--background-secondary) !important;
-  padding: 2px 6px !important;
-  border-radius: 4px !important;
-  display: inline-block !important;
-  width: fit-content !important;
-  margin-bottom: 6px !important;
-  font-family: var(--font-monospace) !important;
-}
-
-/* Diagnostic message text */
-.cm-diagnosticText {
-  font-size: 13px !important;
-  line-height: 1.4 !important;
-  color: var(--text-normal) !important;
-  display: block !important;
-  margin-bottom: 0 !important;
-}
-
-/* Action buttons */
-.cm-diagnosticAction {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 4px 10px !important;
-  margin-top: 8px !important;
-  margin-right: 6px !important;
-  background-color: transparent !important;
-  color: var(--text-accent) !important;
-  border: 1px solid var(--text-accent) !important;
-  border-radius: 4px !important;
-  font-size: 11px !important;
-  font-weight: 500 !important;
-  cursor: pointer !important;
-  pointer-events: auto !important;
-  width: auto !important;
-  max-width: fit-content !important;
-  transition: all 0.15s ease !important;
-}
-
-.cm-diagnosticAction:hover {
-  background-color: var(--text-accent) !important;
-  color: var(--text-on-accent) !important;
-}
-
-/* Secondary style for Docs button */
-.cm-diagnosticAction:last-of-type:not(:first-of-type) {
-  background-color: transparent !important;
-  color: var(--text-muted) !important;
-  border: none !important;
-  padding: 4px 6px !important;
-  font-weight: 400 !important;
-}
-
-.cm-diagnosticAction:last-of-type:not(:first-of-type):hover {
-  color: var(--text-accent) !important;
-  background-color: transparent !important;
-}
-
-/* Hint severity - used for Fix All footer */
-.cm-diagnostic-hint {
-  border-left: 3px solid transparent !important;
-  background-color: var(--background-secondary) !important;
-  padding: 10px 14px !important;
-  flex-direction: column !important;
-  align-items: flex-start !important;
-}
-
-.cm-diagnostic-hint .cm-diagnosticText {
-  display: none !important;
-}
-
-.cm-diagnostic-hint .cm-diagnosticSource {
-  order: 1 !important;
-  margin-bottom: 0 !important;
-  margin-top: 6px !important;
-  background-color: transparent !important;
-  color: var(--text-muted) !important;
-  padding: 0 !important;
-  font-family: var(--font-ui-small) !important;
-}
-
-.cm-diagnostic-hint .cm-diagnosticAction {
-  order: 0 !important;
-  margin-top: 0 !important;
-  background-color: var(--interactive-accent) !important;
-  color: var(--text-on-accent) !important;
-  border: none !important;
-}
-
-.cm-diagnostic-hint .cm-diagnosticAction:hover {
-  background-color: var(--interactive-accent-hover) !important;
-}
-
-/* Rules section - collapsible headers */
-.rumdl-rules-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 0;
-  cursor: pointer;
-  font-weight: 500;
-  border-top: 1px solid var(--background-modifier-border);
-  margin-top: 16px;
-}
-
-.rumdl-rules-header:hover {
-  color: var(--text-accent);
-}
-
-.rumdl-collapse-icon {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-}
-
-.rumdl-collapse-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Rules container */
-.rumdl-rules-container {
-  max-height: 400px;
-  overflow-y: auto;
-  padding-left: 22px;
-  border-left: 2px solid var(--background-modifier-border);
-  margin-left: 7px;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-}
-
-.rumdl-rules-container.rumdl-collapsed {
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  padding: 0;
-  margin: 0;
-  border: none;
-}
-
-.rumdl-rules-container .setting-item {
-  padding: 8px 0;
-}
-
-.rumdl-rules-container .setting-item-name {
+/* Rule name as a chip above the message */
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnosticSource {
+  order: -1;
+  flex-basis: 100%;
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
   font-family: var(--font-monospace);
-  font-size: 0.9em;
-}
-
-.rumdl-rules-container .setting-item-description {
-  font-size: 0.85em;
-}
-
-/* Empty state message */
-.rumdl-empty-message {
+  font-size: 11px;
   color: var(--text-muted);
-  font-style: italic;
-  padding: 12px 0;
-  font-size: 0.9em;
-}
-
-/* Disabled rule styling */
-.rumdl-rule-disabled {
   background-color: var(--background-secondary);
-  border-radius: 6px;
-  margin: 4px 0;
-  padding-left: 8px !important;
-  padding-right: 8px !important;
+  opacity: 1;
 }
 
-.rumdl-rule-disabled .setting-item-name {
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnosticText {
+  display: block;
+  flex-basis: 100%;
+  margin-bottom: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-normal);
+}
+
+/* Fix and Docs actions */
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnosticAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  max-width: fit-content;
+  margin: 8px 6px 0 0;
+  padding: 4px 10px;
+  border: 1px solid var(--text-accent);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-accent);
+  background-color: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnosticAction:hover {
+  color: var(--text-on-accent);
+  background-color: var(--text-accent);
+}
+
+/* The Docs action, when it follows Fix, is the quiet secondary one */
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnosticAction:last-of-type:not(:first-of-type) {
+  padding: 4px 6px;
+  border: none;
+  font-weight: 400;
   color: var(--text-muted);
+  background-color: transparent;
 }
 
-/* Divider between disabled and enabled rules */
-.rumdl-rules-divider {
-  height: 1px;
-  background: var(--background-modifier-border);
-  margin: 12px 0;
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnosticAction:last-of-type:not(:first-of-type):hover {
+  color: var(--text-accent);
+  background-color: transparent;
+}
+
+/* The "Fix all" footer is a hint-severity diagnostic */
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic.cm-diagnostic-hint {
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 14px;
+  border-left: 3px solid transparent;
+  background-color: var(--background-secondary);
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic-hint .cm-diagnosticText {
+  display: none;
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic-hint .cm-diagnosticSource {
+  order: 1;
+  margin: 6px 0 0;
+  padding: 0;
+  font-family: var(--font-interface);
+  color: var(--text-muted);
+  background-color: transparent;
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic-hint .cm-diagnosticAction {
+  order: 0;
+  margin-top: 0;
+  border: none;
+  color: var(--text-on-accent);
+  background-color: var(--interactive-accent);
+}
+
+.cm-tooltip-hover .cm-tooltip-lint .cm-diagnostic-hint .cm-diagnosticAction:hover {
+  background-color: var(--interactive-accent-hover);
 }
