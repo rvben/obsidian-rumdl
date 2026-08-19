@@ -1,2 +1,3 @@
-// Injected by esbuild at build time - contains WASM as base64
-declare const RUMDL_WASM_BASE64: string;
+// The rumdl WASM binary, deflated and base64-encoded, inlined by esbuild at
+// build time (see esbuild.config.mjs).
+declare const RUMDL_WASM_DEFLATED_BASE64: string;

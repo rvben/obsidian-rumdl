@@ -2,6 +2,7 @@ import { App, Editor, FileSystemAdapter, MarkdownFileInfo, MarkdownView, Menu, M
 import { initSync, Linter, get_version, get_available_rules, resolve_config_chain } from 'rumdl-wasm';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
+import { inflateSync } from 'fflate';
 
 // Internal Obsidian API type for command manipulation
 interface InternalAppCommands {
@@ -78,6 +79,16 @@ async function loadDesktopNode() {
 /** Whether a caught value is a Node filesystem error carrying the given code. */
 function hasErrnoCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === code;
+}
+
+/** Decode the WASM binary that esbuild deflated and inlined into main.js. */
+function embeddedWasm(): Uint8Array {
+  const deflated = atob(RUMDL_WASM_DEFLATED_BASE64);
+  const bytes = new Uint8Array(deflated.length);
+  for (let i = 0; i < deflated.length; i++) {
+    bytes[i] = deflated.charCodeAt(i);
+  }
+  return inflateSync(bytes);
 }
 
 /**
@@ -527,11 +538,8 @@ export default class RumdlPlugin extends Plugin {
     // Settings tab - register early so it's always available
     this.addSettingTab(new RumdlSettingTab(this.app, this));
 
-    // Initialize WASM module from embedded base64
     try {
-      // Decode base64 WASM (injected by esbuild at build time)
-      const wasmBinary = Uint8Array.from(atob(RUMDL_WASM_BASE64), c => c.charCodeAt(0));
-      initSync(wasmBinary);
+      initSync({ module: embeddedWasm() });
 
       // Create the linter instance with configuration
       await this.createLinter();
