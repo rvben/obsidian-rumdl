@@ -1,4 +1,4 @@
-import { App, Editor, FileSystemAdapter, MarkdownFileInfo, MarkdownView, Menu, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, normalizePath, setIcon } from 'obsidian';
+import { App, Editor, FileSystemAdapter, MarkdownFileInfo, MarkdownView, Menu, Modal, Notice, Platform, Plugin, PluginSettingTab, SettingDefinition, SettingDefinitionItem, TFile, normalizePath, setIcon } from 'obsidian';
 import { initSync, Linter, get_version, get_available_rules, resolve_config_chain } from 'rumdl-wasm';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
@@ -28,6 +28,17 @@ interface RumdlWarning {
   };
 }
 
+/** A rule as listed by rumdl's `get_available_rules`. */
+interface RuleInfo {
+  name: string;
+  description: string;
+}
+
+type HeadingStyle = 'atx' | 'setext' | 'consistent';
+type EmphasisStyle = 'asterisk' | 'underscore' | 'consistent';
+type StrongStyle = 'asterisk' | 'underscore' | 'consistent';
+type UlStyle = 'dash' | 'asterisk' | 'plus' | 'consistent';
+
 interface RumdlPluginSettings {
   formatOnSave: boolean;
   showStatusBar: boolean;
@@ -35,10 +46,10 @@ interface RumdlPluginSettings {
   lineLength: number;
   useConfigFile: boolean;
   // Style options
-  headingStyle: 'atx' | 'setext' | 'consistent';
-  emphasisStyle: 'asterisk' | 'underscore' | 'consistent';
-  strongStyle: 'asterisk' | 'underscore' | 'consistent';
-  ulStyle: 'dash' | 'asterisk' | 'plus' | 'consistent';
+  headingStyle: HeadingStyle;
+  emphasisStyle: EmphasisStyle;
+  strongStyle: StrongStyle;
+  ulStyle: UlStyle;
 }
 
 const DEFAULT_SETTINGS: RumdlPluginSettings = {
@@ -79,6 +90,15 @@ async function loadDesktopNode() {
 /** Whether a caught value is a Node filesystem error carrying the given code. */
 function hasErrnoCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === code;
+}
+
+/**
+ * Parse JSON produced by rumdl. Every WASM call returns its result as a JSON
+ * string whose shape is fixed by the rumdl version the plugin bundles, so the
+ * caller names the type it expects.
+ */
+function parseJson<T>(json: string): T {
+  return JSON.parse(json) as T;
 }
 
 /** Decode the WASM binary that esbuild deflated and inlined into main.js. */
@@ -211,8 +231,7 @@ function createRumdlLinter(plugin: RumdlPlugin) {
 
     const content = view.state.doc.toString();
     const filePath = plugin.filePathForEditorView(view);
-    const result = plugin.linter.check(content, filePath);
-    const warnings: RumdlWarning[] = JSON.parse(result);
+    const warnings = parseJson<RumdlWarning[]>(plugin.linter.check(content, filePath));
 
     // Update status bar
     plugin.updateStatusBar(warnings.length);
@@ -309,9 +328,11 @@ function createRumdlLinter(plugin: RumdlPlugin) {
 
 export default class RumdlPlugin extends Plugin {
   settings!: RumdlPluginSettings;
-  statusBarItem!: HTMLElement;
+  settingTab!: RumdlSettingTab;
+  statusBarItem: HTMLElement | null = null;
   wasmReady = false;
   linter: Linter | null = null;
+  private rules: RuleInfo[] | null = null;
   originalSaveCallback: ((checking: boolean) => boolean) | undefined;
   configFilePath: string | null = null;
   /** Every config file the active linter was built from, root first; empty without a config file. */
@@ -413,8 +434,8 @@ export default class RumdlPlugin extends Plugin {
             this.linter = linter;
             this.configFilePath = configName;
             this.configChain = chain;
-            console.debug('rumdl: loaded config from', chain.join(' -> '), JSON.parse(linter.get_config()));
-            const warnings: string[] = JSON.parse(linter.get_config_warnings());
+            console.debug('rumdl: loaded config from', chain.join(' -> '), parseJson<unknown>(linter.get_config()));
+            const warnings = parseJson<string[]>(linter.get_config_warnings());
             if (warnings.length > 0) {
               console.warn('rumdl: config warnings:', warnings);
               new Notice(`rumdl: ${configName} has ${warnings.length} config warning(s)\n${warnings.join('\n')}`, 10000);
@@ -477,7 +498,7 @@ export default class RumdlPlugin extends Plugin {
     const request = () => ({ root, files, env, home, 'default-flavor': 'obsidian' });
     let chain: string[];
     for (;;) {
-      const status: ConfigChainStatus = JSON.parse(resolve_config_chain(request()));
+      const status = parseJson<ConfigChainStatus>(resolve_config_chain(request()));
       if (status.status === 'need-file') {
         files[status.path] = await this.readConfigFile(status.path);
       } else if (status.status === 'error') {
@@ -536,7 +557,8 @@ export default class RumdlPlugin extends Plugin {
     await this.loadSettings();
 
     // Settings tab - register early so it's always available
-    this.addSettingTab(new RumdlSettingTab(this.app, this));
+    this.settingTab = new RumdlSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     try {
       initSync({ module: embeddedWasm() });
@@ -556,12 +578,10 @@ export default class RumdlPlugin extends Plugin {
       return;
     }
 
-    // Status bar
-    if (this.settings.showStatusBar) {
-      this.statusBarItem = this.addStatusBarItem();
-      this.statusBarItem.addClass('rumdl-status');
-      this.statusBarItem.addEventListener('click', (e) => this.showStatusMenu(e));
-    }
+    // The settings tab lists the rules, which only exist once the WASM is up.
+    this.settingTab.update();
+
+    this.applyStatusBarSetting();
 
     // Register CodeMirror linter extension (provides underlines + hover tooltips)
     this.registerEditorExtension([createRumdlLinter(this)]);
@@ -623,7 +643,13 @@ export default class RumdlPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const stored = (await this.loadData()) as Partial<RumdlPluginSettings> | null;
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...stored,
+      // Copy the array so that edits never reach DEFAULT_SETTINGS.
+      disabledRules: [...(stored?.disabledRules ?? DEFAULT_SETTINGS.disabledRules)],
+    };
   }
 
   async saveSettings() {
@@ -632,6 +658,26 @@ export default class RumdlPlugin extends Plugin {
     if (this.wasmReady) {
       await this.createLinter();
     }
+  }
+
+  /** Create or remove the status bar item so that it matches the setting. */
+  applyStatusBarSetting() {
+    if (this.settings.showStatusBar && !this.statusBarItem) {
+      this.statusBarItem = this.addStatusBarItem();
+      this.statusBarItem.addClass('rumdl-status');
+      this.statusBarItem.addEventListener('click', (e) => this.showStatusMenu(e));
+      this.updateStatusBar(null);
+    } else if (!this.settings.showStatusBar && this.statusBarItem) {
+      this.statusBarItem.remove();
+      this.statusBarItem = null;
+    }
+  }
+
+  /** The rules rumdl knows, in rumdl's order; empty until the WASM is loaded. */
+  availableRules(): RuleInfo[] {
+    if (!this.wasmReady) return [];
+    this.rules ??= parseJson<RuleInfo[]>(get_available_rules());
+    return this.rules;
   }
 
   settingsToToml(): string {
@@ -702,8 +748,7 @@ export default class RumdlPlugin extends Plugin {
     }
 
     const content = editor.getValue();
-    const result = this.linter.check(content, filePath);
-    const warnings: RumdlWarning[] = JSON.parse(result);
+    const warnings = parseJson<RumdlWarning[]>(this.linter.check(content, filePath));
 
     this.updateStatusBar(warnings.length);
 
@@ -733,8 +778,7 @@ export default class RumdlPlugin extends Plugin {
       editor.setCursor(cursor);
 
       // Re-lint to show remaining issues
-      const result = this.linter.check(fixed, filePath);
-      const remaining: RumdlWarning[] = JSON.parse(result);
+      const remaining = parseJson<RumdlWarning[]>(this.linter.check(fixed, filePath));
 
       this.updateStatusBar(remaining.length);
 
@@ -754,8 +798,7 @@ export default class RumdlPlugin extends Plugin {
       return;
     }
 
-    const rules = JSON.parse(get_available_rules());
-    new RulesModal(this.app, rules).open();
+    new RulesModal(this.app, this.availableRules()).open();
   }
 
   setupFormatOnSave() {
@@ -828,20 +871,20 @@ class LintResultsModal extends Modal {
       });
     }
 
-    const list = contentEl.createEl('div', { cls: 'rumdl-results' });
+    const list = contentEl.createDiv({ cls: 'rumdl-results' });
 
     for (const warning of this.warnings) {
-      const item = list.createEl('div', { cls: 'rumdl-warning' });
+      const item = list.createDiv({ cls: 'rumdl-warning' });
 
-      const header = item.createEl('div', { cls: 'rumdl-warning-header' });
+      const header = item.createDiv({ cls: 'rumdl-warning-header' });
       header.createEl('strong', { text: warning.rule_name || warning.rule || 'Unknown' });
-      header.createEl('span', { text: ` Line ${warning.line}:${warning.column}` });
+      header.createSpan({ text: ` Line ${warning.line}:${warning.column}` });
 
       if (warning.fix) {
-        header.createEl('span', { text: ' [fixable]', cls: 'rumdl-fixable' });
+        header.createSpan({ text: ' [fixable]', cls: 'rumdl-fixable' });
       }
 
-      item.createEl('div', { text: warning.message, cls: 'rumdl-message' });
+      item.createDiv({ text: warning.message, cls: 'rumdl-message' });
 
       // Click to go to line
       item.addEventListener('click', () => {
@@ -859,9 +902,9 @@ class LintResultsModal extends Modal {
 }
 
 class RulesModal extends Modal {
-  rules: { name: string; description: string }[];
+  rules: RuleInfo[];
 
-  constructor(app: App, rules: { name: string; description: string }[]) {
+  constructor(app: App, rules: RuleInfo[]) {
     super(app);
     this.rules = rules;
   }
@@ -872,12 +915,12 @@ class RulesModal extends Modal {
 
     contentEl.createEl('h2', { text: `Available rules (${this.rules.length})` });
 
-    const list = contentEl.createEl('div', { cls: 'rumdl-rules' });
+    const list = contentEl.createDiv({ cls: 'rumdl-rules' });
 
     for (const rule of this.rules) {
-      const item = list.createEl('div', { cls: 'rumdl-rule' });
+      const item = list.createDiv({ cls: 'rumdl-rule' });
       item.createEl('strong', { text: rule.name });
-      item.createEl('span', { text: `: ${rule.description}` });
+      item.createSpan({ text: `: ${rule.description}` });
     }
   }
 
@@ -887,6 +930,23 @@ class RulesModal extends Modal {
   }
 }
 
+/**
+ * Control keys of the per-rule toggles. Rules are stored as the
+ * `disabledRules` list, so each rule gets a pseudo-key that the tab maps to
+ * membership of that list instead of to a settings property.
+ */
+const RULE_KEY_PREFIX = 'rule:';
+
+function ruleKey(rule: RuleInfo): string {
+  return `${RULE_KEY_PREFIX}${rule.name}`;
+}
+
+function isSettingKey(key: string): key is keyof RumdlPluginSettings {
+  return Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key);
+}
+
+const CONSISTENT_STYLE = 'Consistent (detect from file)';
+
 class RumdlSettingTab extends PluginSettingTab {
   plugin: RumdlPlugin;
 
@@ -895,228 +955,183 @@ class RumdlSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    // The rule settings below only apply while no config file is in charge.
+    const settingsActive = () => !this.plugin.settings.useConfigFile || this.plugin.configFilePath === null;
 
-    // Plugin behavior settings
-    new Setting(containerEl)
-      .setName('Format on save')
-      .setDesc('Automatically fix issues when files are saved')
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.formatOnSave).onChange(async (value) => {
-          this.plugin.settings.formatOnSave = value;
-          await this.plugin.saveSettings();
-        })
-      );
+    return [
+      {
+        name: 'Format on save',
+        desc: 'Fix issues automatically when a file is saved',
+        control: { type: 'toggle', key: 'formatOnSave', defaultValue: DEFAULT_SETTINGS.formatOnSave },
+      },
+      {
+        name: 'Show status bar',
+        desc: 'Show the issue count of the active file in the status bar',
+        control: { type: 'toggle', key: 'showStatusBar', defaultValue: DEFAULT_SETTINGS.showStatusBar },
+      },
+      {
+        type: 'group',
+        heading: 'Linting',
+        items: [
+          {
+            name: 'Use config file',
+            desc: this.configFileDesc(),
+            control: { type: 'toggle', key: 'useConfigFile', defaultValue: DEFAULT_SETTINGS.useConfigFile },
+          },
+          {
+            type: 'page',
+            name: 'Rules',
+            desc: 'Choose which rules are checked',
+            displayValue: () => this.rulesSummary(),
+            visible: settingsActive,
+            items: [this.rulesGroup()],
+          },
+          {
+            name: 'Line length',
+            desc: 'Maximum line length, 0 for no limit',
+            visible: settingsActive,
+            control: {
+              type: 'number',
+              key: 'lineLength',
+              min: 0,
+              step: 1,
+              placeholder: '80',
+              defaultValue: DEFAULT_SETTINGS.lineLength,
+              validate: (value) => (Number.isInteger(value) && value >= 0 ? undefined : 'Use a whole number, 0 for no limit'),
+            },
+          },
+          {
+            name: 'Heading style',
+            desc: 'Preferred heading format',
+            visible: settingsActive,
+            control: {
+              type: 'dropdown',
+              key: 'headingStyle',
+              defaultValue: DEFAULT_SETTINGS.headingStyle,
+              options: { consistent: CONSISTENT_STYLE, atx: 'Hash style (# heading)', setext: 'Setext (underlined)' },
+            },
+          },
+          {
+            name: 'Unordered list style',
+            desc: 'Preferred bullet character',
+            visible: settingsActive,
+            control: {
+              type: 'dropdown',
+              key: 'ulStyle',
+              defaultValue: DEFAULT_SETTINGS.ulStyle,
+              options: { consistent: CONSISTENT_STYLE, dash: 'Dash (-)', asterisk: 'Asterisk (*)', plus: 'Plus (+)' },
+            },
+          },
+          {
+            name: 'Emphasis style',
+            desc: 'Preferred marker for *italic* text',
+            visible: settingsActive,
+            control: {
+              type: 'dropdown',
+              key: 'emphasisStyle',
+              defaultValue: DEFAULT_SETTINGS.emphasisStyle,
+              options: { consistent: CONSISTENT_STYLE, asterisk: 'Asterisk (*text*)', underscore: 'Underscore (_text_)' },
+            },
+          },
+          {
+            name: 'Strong style',
+            desc: 'Preferred marker for **bold** text',
+            visible: settingsActive,
+            control: {
+              type: 'dropdown',
+              key: 'strongStyle',
+              defaultValue: DEFAULT_SETTINGS.strongStyle,
+              options: { consistent: CONSISTENT_STYLE, asterisk: 'Asterisk (**text**)', underscore: 'Underscore (__text__)' },
+            },
+          },
+          {
+            name: 'Export to config file',
+            desc: 'Create .rumdl.toml in the vault root from the settings above and switch to it',
+            visible: settingsActive,
+            action: () => {
+              void this.exportSettings();
+            },
+          },
+        ],
+      },
+    ];
+  }
 
-    new Setting(containerEl)
-      .setName('Show status bar')
-      .setDesc('Show lint status in the status bar')
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showStatusBar).onChange(async (value) => {
-          this.plugin.settings.showStatusBar = value;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    // Linting section
-    new Setting(containerEl).setName('Linting').setHeading();
-
-    // The chain reads root first, each file followed by the one it extends.
-    const configDesc = this.plugin.configChain.length > 0
-      ? `Using config from: ${this.plugin.configChain.join(' -> ')}`
-      : 'No config file found. Using settings below.';
-
-    new Setting(containerEl)
-      .setName('Use config file')
-      .setDesc(`Auto-detect .rumdl.toml in vault root. ${configDesc}`)
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.useConfigFile).onChange(async (value) => {
-          this.plugin.settings.useConfigFile = value;
-          await this.plugin.saveSettings();
-          this.display(); // Refresh to show/hide rule settings
-        })
-      );
-
-    // Only show rule settings if not using config file
-    if (!this.plugin.settings.useConfigFile || !this.plugin.configFilePath) {
-      const noteEl = containerEl.createEl('p', { cls: 'rumdl-settings-note' });
-      noteEl.setText('These settings apply when no config file is active. For full control of 60+ rules, use a ');
-      noteEl.createEl('a', {
-        text: '.rumdl.toml config file',
-        href: 'https://github.com/rvben/rumdl#configuration',
-      });
-      noteEl.appendText('.');
-
-      // Rules section - single list with disabled rules at top
-      if (this.plugin.wasmReady) {
-        const allRules: { name: string; description: string }[] = JSON.parse(get_available_rules());
-
-        // Helper to create a rule setting
-        const createRuleSetting = (rule: { name: string; description: string }, container: HTMLElement) => {
-          const isDisabled = this.plugin.settings.disabledRules.includes(rule.name);
-          const setting = new Setting(container)
-            .setName(rule.name)
-            .setDesc(rule.description)
-            .addExtraButton((button) =>
-              button
-                .setIcon('external-link')
-                .setTooltip('View documentation')
-                .onClick(() => {
-                  window.open(getRuleDocsUrl(rule.name), '_blank');
-                })
-            )
-            .addToggle((toggle) =>
-              toggle.setValue(!isDisabled).onChange(async (enabled) => {
-                if (enabled) {
-                  this.plugin.settings.disabledRules = this.plugin.settings.disabledRules.filter(r => r !== rule.name);
-                } else {
-                  if (!this.plugin.settings.disabledRules.includes(rule.name)) {
-                    this.plugin.settings.disabledRules.push(rule.name);
-                  }
-                }
-                await this.plugin.saveSettings();
-                this.display();
-              })
-            );
-
-          // Add visual styling for disabled rules
-          if (isDisabled) {
-            setting.settingEl.addClass('rumdl-rule-disabled');
-          }
-        };
-
-        // Single collapsible rules list
-        const disabledCount = this.plugin.settings.disabledRules.length;
-        const rulesHeader = containerEl.createEl('div', { cls: 'rumdl-rules-header' });
-        const collapseIcon = rulesHeader.createSpan({ cls: 'rumdl-collapse-icon' });
-        setIcon(collapseIcon, 'chevron-right');
-        rulesHeader.createSpan({
-          text: disabledCount > 0
-            ? `Rules (${disabledCount} disabled)`
-            : `Rules (${allRules.length})`
-        });
-
-        const rulesContainer = containerEl.createEl('div', { cls: 'rumdl-rules-container rumdl-collapsed' });
-
-        rulesHeader.addEventListener('click', () => {
-          rulesContainer.classList.toggle('rumdl-collapsed');
-          setIcon(collapseIcon, rulesContainer.classList.contains('rumdl-collapsed') ? 'chevron-right' : 'chevron-down');
-        });
-
-        // Sort rules: disabled first, then alphabetically
-        const sortedRules = [...allRules].sort((a, b) => {
-          const aDisabled = this.plugin.settings.disabledRules.includes(a.name);
-          const bDisabled = this.plugin.settings.disabledRules.includes(b.name);
-          if (aDisabled && !bDisabled) return -1;
-          if (!aDisabled && bDisabled) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-        // Add divider after disabled rules if any exist
-        let addedDivider = false;
-        for (const rule of sortedRules) {
-          const isDisabled = this.plugin.settings.disabledRules.includes(rule.name);
-
-          // Add divider between disabled and enabled sections
-          if (!isDisabled && !addedDivider && disabledCount > 0) {
-            rulesContainer.createEl('div', { cls: 'rumdl-rules-divider' });
-            addedDivider = true;
-          }
-
-          createRuleSetting(rule, rulesContainer);
-        }
-      }
-
-      new Setting(containerEl)
-        .setName('Line length')
-        .setDesc('Maximum line length (0 = unlimited)')
-        .addText((text) =>
-          text
-            .setPlaceholder('80')
-            .setValue(String(this.plugin.settings.lineLength))
-            .onChange(async (value) => {
-              const num = parseInt(value, 10);
-              this.plugin.settings.lineLength = isNaN(num) ? 0 : Math.max(0, num);
-              await this.plugin.saveSettings();
-            })
-        );
-
-      // Style settings
-      new Setting(containerEl)
-        .setName('Heading style')
-        .setDesc('Preferred heading format (# vs underline)')
-        .addDropdown((dropdown) =>
-          dropdown
-            .addOption('consistent', 'Consistent (detect from file)')
-            .addOption('atx', 'Hash style (# heading)')
-            .addOption('setext', 'Setext (underlined)')
-            .setValue(this.plugin.settings.headingStyle)
-            .onChange(async (value) => {
-              this.plugin.settings.headingStyle = value as 'atx' | 'setext' | 'consistent';
-              await this.plugin.saveSettings();
-            })
-        );
-
-      new Setting(containerEl)
-        .setName('Unordered list style')
-        .setDesc('Preferred bullet character')
-        .addDropdown((dropdown) =>
-          dropdown
-            .addOption('consistent', 'Consistent (detect from file)')
-            .addOption('dash', 'Dash (-)')
-            .addOption('asterisk', 'Asterisk (*)')
-            .addOption('plus', 'Plus (+)')
-            .setValue(this.plugin.settings.ulStyle)
-            .onChange(async (value) => {
-              this.plugin.settings.ulStyle = value as 'dash' | 'asterisk' | 'plus' | 'consistent';
-              await this.plugin.saveSettings();
-            })
-        );
-
-      new Setting(containerEl)
-        .setName('Emphasis style')
-        .setDesc('Preferred emphasis marker for *italic*')
-        .addDropdown((dropdown) =>
-          dropdown
-            .addOption('consistent', 'Consistent (detect from file)')
-            .addOption('asterisk', 'Asterisk (*text*)')
-            .addOption('underscore', 'Underscore (_text_)')
-            .setValue(this.plugin.settings.emphasisStyle)
-            .onChange(async (value) => {
-              this.plugin.settings.emphasisStyle = value as 'asterisk' | 'underscore' | 'consistent';
-              await this.plugin.saveSettings();
-            })
-        );
-
-      new Setting(containerEl)
-        .setName('Strong style')
-        .setDesc('Preferred strong marker for **bold**')
-        .addDropdown((dropdown) =>
-          dropdown
-            .addOption('consistent', 'Consistent (detect from file)')
-            .addOption('asterisk', 'Asterisk (**text**)')
-            .addOption('underscore', 'Underscore (__text__)')
-            .setValue(this.plugin.settings.strongStyle)
-            .onChange(async (value) => {
-              this.plugin.settings.strongStyle = value as 'asterisk' | 'underscore' | 'consistent';
-              await this.plugin.saveSettings();
-            })
-        );
-
-      // Export button - only show if no config file exists
-      new Setting(containerEl)
-        .setName('Export to config file')
-        .setDesc('Create .rumdl.toml from current settings (one-time migration)')
-        .addButton((button) =>
-          button.setButtonText('Export to .rumdl.toml').onClick(async () => {
-            const success = await this.plugin.exportToConfigFile();
-            if (success) {
-              this.display(); // Refresh to show config file mode
-            }
-          })
-        );
+  getControlValue(key: string): unknown {
+    if (key.startsWith(RULE_KEY_PREFIX)) {
+      return !this.plugin.settings.disabledRules.includes(key.slice(RULE_KEY_PREFIX.length));
     }
+    return isSettingKey(key) ? this.plugin.settings[key] : undefined;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = this.plugin.settings;
+    if (key.startsWith(RULE_KEY_PREFIX)) {
+      const rule = key.slice(RULE_KEY_PREFIX.length);
+      const others = settings.disabledRules.filter((r) => r !== rule);
+      settings.disabledRules = value ? others : [...others, rule];
+    } else if (isSettingKey(key)) {
+      // Each key is bound to a control whose value type is the property's type.
+      (settings as Record<keyof RumdlPluginSettings, unknown>)[key] = value;
+    } else {
+      return;
+    }
+    await this.plugin.saveSettings();
+    if (key === 'showStatusBar') {
+      this.plugin.applyStatusBarSetting();
+    } else if (key === 'useConfigFile') {
+      // The config file description and the visibility of the rule settings
+      // depend on the linter that saveSettings just rebuilt.
+      this.update();
+    }
+  }
+
+  private async exportSettings(): Promise<void> {
+    if (await this.plugin.exportToConfigFile()) {
+      this.update();
+    }
+  }
+
+  /** One row per rule, each with a toggle and a link to the rule's documentation. */
+  private rulesGroup(): SettingDefinitionItem {
+    const rules = this.plugin.availableRules();
+    const descriptions = new Map(rules.map((rule) => [rule.name, rule.description.toLowerCase()]));
+    return {
+      type: 'group',
+      search: {
+        placeholder: 'Search rules',
+        match: (def: SettingDefinition, query: string) => {
+          const needle = query.toLowerCase();
+          return def.name.toLowerCase().includes(needle) || (descriptions.get(def.name) ?? '').includes(needle);
+        },
+      },
+      items: rules.map((rule) => ({
+        name: rule.name,
+        desc: createFragment((fragment) => {
+          fragment.appendText(`${rule.description} `);
+          fragment.createEl('a', { text: 'Docs', href: getRuleDocsUrl(rule.name) });
+        }),
+        control: { type: 'toggle', key: ruleKey(rule), defaultValue: true },
+      })),
+    };
+  }
+
+  private rulesSummary(): string {
+    const disabled = this.plugin.settings.disabledRules.length;
+    return disabled === 0 ? 'All enabled' : `${disabled} disabled`;
+  }
+
+  private configFileDesc(): DocumentFragment {
+    const { settings, configChain } = this.plugin;
+    const status = !settings.useConfigFile
+      ? 'The settings below apply.'
+      : configChain.length > 0
+        ? `Using ${configChain.join(' -> ')}.`
+        : 'No config file in the vault root, so the settings below apply.';
+    return createFragment((fragment) => {
+      fragment.appendText(`Read .rumdl.toml from the vault root instead of the settings below. ${status} `);
+      fragment.createEl('a', { text: 'Config file reference', href: 'https://github.com/rvben/rumdl#configuration' });
+    });
   }
 }
