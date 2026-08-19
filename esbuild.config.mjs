@@ -40,6 +40,10 @@ const context = await esbuild.context({
   ],
   format: "cjs",
   target: "es2020",
+  // Obsidian loads main.js as a CommonJS script, where a native import() of a
+  // Node builtin does not resolve; lowering it makes esbuild emit require()
+  // instead, which the desktop app provides.
+  supported: { "dynamic-import": false },
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,

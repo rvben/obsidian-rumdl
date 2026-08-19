@@ -62,18 +62,18 @@ type ConfigChainStatus =
   | { status: 'error'; message: string };
 
 /**
- * Node builtins for reading `extends` targets outside the vault, resolved only
- * when called. A static import would be evaluated when the plugin loads, which
- * fails on mobile, where there is no Node runtime; callers check
- * `Platform.isDesktopApp` first.
+ * Node builtins for reading `extends` targets outside the vault. They are
+ * loaded on first use rather than imported statically because the plugin also
+ * runs on mobile, where there is no Node runtime and a static import would
+ * fail when the plugin loads.
  */
-/* eslint-disable @typescript-eslint/no-require-imports */
-const desktopNode = {
-  fs: () => require('fs') as typeof import('fs'),
-  path: () => require('path') as typeof import('path'),
-  os: () => require('os') as typeof import('os'),
-};
-/* eslint-enable @typescript-eslint/no-require-imports */
+async function loadDesktopNode() {
+  if (!Platform.isDesktop) {
+    throw new Error('Node builtins are only available in the desktop app');
+  }
+  const [fs, path, os] = await Promise.all([import('fs'), import('path'), import('os')]);
+  return { fs, path, os };
+}
 
 /**
  * Whether a path rumdl asks for while following `extends` lies outside the
@@ -455,13 +455,9 @@ export default class RumdlPlugin extends Plugin {
    */
   async linterFromConfigFile(root: string): Promise<{ linter: Linter; chain: string[] }> {
     const files: Record<string, string | null> = { [root]: await this.app.vault.adapter.read(root) };
-    const request = () => ({
-      root,
-      files,
-      env: this.configEnvironment(),
-      home: this.homeDirectory(),
-      'default-flavor': 'obsidian',
-    });
+    const env = this.configEnvironment();
+    const home = await this.homeDirectory();
+    const request = () => ({ root, files, env, home, 'default-flavor': 'obsidian' });
     let chain: string[];
     for (;;) {
       const status: ConfigChainStatus = JSON.parse(resolve_config_chain(request()));
@@ -490,12 +486,13 @@ export default class RumdlPlugin extends Plugin {
       return this.app.vault.adapter.read(vaultPath);
     }
     const adapter = this.app.vault.adapter;
-    if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) {
+    if (!Platform.isDesktop || !(adapter instanceof FileSystemAdapter)) {
       throw new Error(`extends target '${path}' is outside the vault, which only the desktop app can read`);
     }
-    const absolute = desktopNode.path().resolve(adapter.getBasePath(), path);
+    const node = await loadDesktopNode();
+    const absolute = node.path.resolve(adapter.getBasePath(), path);
     try {
-      return await desktopNode.fs().promises.readFile(absolute, 'utf8');
+      return await node.fs.promises.readFile(absolute, 'utf8');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw e;
@@ -504,7 +501,7 @@ export default class RumdlPlugin extends Plugin {
 
   /** Environment variables for `$VAR` in `extends`; the desktop app has the process's, mobile has none. */
   configEnvironment(): Record<string, string> {
-    if (!Platform.isDesktopApp) return {};
+    if (!Platform.isDesktop) return {};
     const env: Record<string, string> = {};
     for (const [name, value] of Object.entries(process.env)) {
       if (value !== undefined) env[name] = value;
@@ -513,9 +510,9 @@ export default class RumdlPlugin extends Plugin {
   }
 
   /** The home directory for `~/` in `extends`; undefined on mobile, where `~/` is left as written. */
-  homeDirectory(): string | undefined {
-    if (!Platform.isDesktopApp) return undefined;
-    return desktopNode.os().homedir();
+  async homeDirectory(): Promise<string | undefined> {
+    if (!Platform.isDesktop) return undefined;
+    return (await loadDesktopNode()).os.homedir();
   }
 
   async onload() {
