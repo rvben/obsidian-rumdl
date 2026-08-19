@@ -23,6 +23,10 @@ on:
 
 permissions:
   contents: write
+  # Artifact attestations: the release assets are signed as having been built
+  # by this workflow from this commit.
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -94,7 +98,7 @@ jobs:
       - name: Verify build artifacts
         run: |
           set -euo pipefail
-          for file in main.js manifest.json styles.css versions.json; do
+          for file in main.js manifest.json styles.css; do
             if [ ! -f "$file" ]; then
               echo "Error: Required file $file not found" >&2
               exit 1
@@ -108,7 +112,23 @@ jobs:
             echo "Error: main.js is too small ($MAIN_SIZE bytes), WASM may not be embedded" >&2
             exit 1
           fi
+          # Obsidian Sync (Standard plan) refuses files above 5 MB, so a
+          # release past that size would silently stop syncing for those users.
+          if [ "$MAIN_SIZE" -gt 5000000 ]; then
+            echo "Error: main.js is too large ($MAIN_SIZE bytes) for Obsidian Sync's 5 MB limit" >&2
+            exit 1
+          fi
           echo "WASM embedded in main.js (size: $MAIN_SIZE bytes)"
+
+      # Pinned to a commit because this only runs at release time, where a
+      # broken floating major would fail after the tag is pushed.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
 
       # Creating the release also creates the tag when it does not exist yet,
       # so the tag records what shipped rather than triggering the shipping.
@@ -121,5 +141,4 @@ jobs:
             main.js
             manifest.json
             styles.css
-            versions.json
           generate_release_notes: true
