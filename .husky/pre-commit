@@ -1,2 +1,15 @@
-npm run lint:staged
+# Lint and format what is staged, then make sure the plugin still builds.
+staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
+
+ts_files=$(staged '*.ts')
+if [ -n "$ts_files" ]; then
+  node_modules/.bin/eslint --max-warnings 0 $ts_files || exit 1
+fi
+
+md_files=$(staged '*.md')
+if [ -n "$md_files" ]; then
+  rumdl fmt $md_files || exit 1
+  git add $md_files
+fi
+
 npm run build

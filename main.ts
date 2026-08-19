@@ -71,8 +71,13 @@ async function loadDesktopNode() {
   if (!Platform.isDesktop) {
     throw new Error('Node builtins are only available in the desktop app');
   }
-  const [fs, path, os] = await Promise.all([import('fs'), import('path'), import('os')]);
-  return { fs, path, os };
+  const [fs, path, os, process] = await Promise.all([import('fs'), import('path'), import('os'), import('process')]);
+  return { fs, path, os, process: process.default };
+}
+
+/** Whether a caught value is a Node filesystem error carrying the given code. */
+function hasErrnoCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === code;
 }
 
 /**
@@ -456,7 +461,7 @@ export default class RumdlPlugin extends Plugin {
    */
   async linterFromConfigFile(root: string): Promise<{ linter: Linter; chain: string[] }> {
     const files: Record<string, string | null> = { [root]: await this.app.vault.adapter.read(root) };
-    const env = this.configEnvironment();
+    const env = await this.configEnvironment();
     const home = await this.homeDirectory();
     const request = () => ({ root, files, env, home, 'default-flavor': 'obsidian' });
     let chain: string[];
@@ -495,16 +500,16 @@ export default class RumdlPlugin extends Plugin {
     try {
       return await node.fs.promises.readFile(absolute, 'utf8');
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      if (hasErrnoCode(e, 'ENOENT')) return null;
       throw e;
     }
   }
 
   /** Environment variables for `$VAR` in `extends`; the desktop app has the process's, mobile has none. */
-  configEnvironment(): Record<string, string> {
+  async configEnvironment(): Promise<Record<string, string>> {
     if (!Platform.isDesktop) return {};
     const env: Record<string, string> = {};
-    for (const [name, value] of Object.entries(process.env)) {
+    for (const [name, value] of Object.entries((await loadDesktopNode()).process.env)) {
       if (value !== undefined) env[name] = value;
     }
     return env;

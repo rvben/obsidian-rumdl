@@ -8,18 +8,9 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "lint": "eslint main.ts --max-warnings 0",
-    "lint:staged": "lint-staged",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "prepare": "husky",
     "deploy": "npm run build && node deploy.mjs"
-  },
-  "lint-staged": {
-    "*.ts": [
-      "eslint --max-warnings 0"
-    ],
-    "*.md": [
-      "rumdl fmt"
-    ]
   },
   "keywords": [
     "obsidian",
@@ -31,20 +22,19 @@
   "license": "MIT",
   "devDependencies": {
     "@codemirror/lint": "^6.9.2",
-    "@types/node": "^16.11.6",
+    "@codemirror/view": "^6.38.6",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
     "eslint": "^9.0.0",
     "eslint-plugin-obsidianmd": "^0.1.9",
     "husky": "^9.0.0",
-    "lint-staged": "^16.2.7",
-    "obsidian": "latest",
+    "obsidian": "^1.13.1",
     "tslib": "2.4.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "rumdl-wasm": "^0.2.58"
   }
 }
