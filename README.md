@@ -145,6 +145,9 @@ npm run dev
 
 # Production build
 npm run build
+
+# Build and copy into a local vault (<vault>/.obsidian/plugins/rumdl/), then reload Obsidian
+OBSIDIAN_VAULT=~/path/to/vault npm run deploy
 ```
 
 ## About rumdl

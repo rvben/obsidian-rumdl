@@ -10,7 +10,8 @@
     "lint": "eslint main.ts --max-warnings 0",
     "lint:staged": "lint-staged",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
-    "prepare": "husky"
+    "prepare": "husky",
+    "deploy": "npm run build && node deploy.mjs"
   },
   "lint-staged": {
     "*.ts": [
