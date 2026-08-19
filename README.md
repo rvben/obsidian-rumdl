@@ -23,7 +23,7 @@ Fast markdown linting for Obsidian using [rumdl](https://github.com/rvben/rumdl)
 
 ### Via BRAT (Recommended - while awaiting community plugin approval)
 
-The easiest way to install and get automatic updates while the [community plugin PR](https://github.com/obsidianmd/obsidian-releases/pull/8822) is pending:
+The easiest way to install and get automatic updates while the plugin is [pending review on the Obsidian community site](https://community.obsidian.md/plugins/rumdl):
 
 1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from the Community Plugins
 2. Open Obsidian Settings → BRAT
@@ -41,7 +41,7 @@ BRAT will automatically update the plugin when new releases are published.
 
 ### From Community Plugins
 
-Pending approval ([PR #8822](https://github.com/obsidianmd/obsidian-releases/pull/8822)). Use BRAT in the meantime for easy installation and updates.
+The plugin is listed at [community.obsidian.md/plugins/rumdl](https://community.obsidian.md/plugins/rumdl) and is pending review there. Obsidian replaced the GitHub pull-request submission queue with its community site in 2026, so the former `obsidian-releases` PR no longer exists. Until the review completes, the "Add to Obsidian" button is disabled; use BRAT in the meantime for easy installation and updates.
 
 ## Usage
 
