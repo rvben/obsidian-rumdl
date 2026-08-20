@@ -84,19 +84,19 @@
 /*
  * Lint hover tooltip. CodeMirror renders it as
  *   div.cm-tooltip.cm-tooltip-hover > ul.cm-tooltip-lint > li.cm-diagnostic
- * and styles it from an adopted stylesheet, which wins ties in the cascade.
- * Every selector below is therefore one class more specific than the
- * `.ͼN .cm-…` selectors it overrides, and the host is matched through :has()
- * so that hover tooltips of other plugins keep their own look.
+ * and styles it from its own injected stylesheet, whose selectors compile to
+ * `.ͼN .cm-…`. Obsidian gives hover-tooltip hosts no styling of its own, so
+ * the host rule below themes every hover tooltip host with Obsidian's design
+ * tokens; the tag qualifier makes it one step more specific than the compiled
+ * CodeMirror selectors so it wins regardless of stylesheet order. Everything
+ * opinionated about lint content stays scoped under .cm-tooltip-lint.
  */
-.cm-tooltip.cm-tooltip-hover:has(> .cm-tooltip-lint) {
+div.cm-tooltip.cm-tooltip-hover {
   pointer-events: auto;
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-  max-width: 400px;
   font-family: var(--font-interface);
 }
 
@@ -104,6 +104,7 @@
   padding: 0;
   margin: 0;
   list-style: none;
+  max-width: 400px;
   background-color: transparent;
 }
 
@@ -199,6 +200,7 @@
   align-items: flex-start;
   padding: 10px 14px;
   border-left: 3px solid transparent;
+  border-radius: 0 0 7px 7px;
   background-color: var(--background-secondary);
 }
 
