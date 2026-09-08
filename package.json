@@ -1,6 +1,6 @@
 {
   "name": "obsidian-rumdl",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Markdown linting for Obsidian using rumdl",
   "main": "main.js",
   "type": "module",
@@ -25,7 +25,7 @@
     "@codemirror/view": "^6.38.6",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "esbuild": "0.17.3",
+    "esbuild": "0.25.0",
     "eslint": "^9.0.0",
     "eslint-plugin-obsidianmd": "^0.1.9",
     "husky": "^9.0.0",

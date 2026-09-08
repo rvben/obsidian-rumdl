@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.11] - 2026-09-08
+
+### Fixed
+
+- Upgrade vulnerable development dependencies, including esbuild and brace-expansion.
+- Check dependencies for known vulnerabilities in CI and before publishing releases.
+
 ## [0.1.0] - 2026-08-20
 
 ### Added
