@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-10-20
+
 ### Fixed
 
 - Preserve emoji and other supplementary Unicode characters in diagnostic positions and quick fixes.
