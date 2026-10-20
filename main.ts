@@ -215,6 +215,15 @@ function isIsolatedEditorContext(view: EditorView): boolean {
   return false;
 }
 
+/** WASM reports Unicode code points; CodeMirror indexes UTF-16 code units. */
+function utf16Offset(text: string, characterOffset: number): number {
+  let offset = 0;
+  for (let character = 0; character < characterOffset && offset < text.length; character++) {
+    offset += text.codePointAt(offset)! > 0xffff ? 2 : 1;
+  }
+  return offset;
+}
+
 // Create a linter extension factory - returns a linter bound to the plugin instance
 function createRumdlLinter(plugin: RumdlPlugin) {
   return linter((view: EditorView) => {
@@ -243,7 +252,7 @@ function createRumdlLinter(plugin: RumdlPlugin) {
       // Convert line/column to document position
       if (warning.line >= 1 && warning.line <= view.state.doc.lines) {
         const line = view.state.doc.line(warning.line);
-        const from = line.from + Math.max(0, (warning.column || 1) - 1);
+        const from = line.from + utf16Offset(line.text, Math.max(0, (warning.column || 1) - 1));
         const to = line.to;
 
         const ruleName = warning.rule_name || warning.rule || 'rumdl';
@@ -268,7 +277,11 @@ function createRumdlLinter(plugin: RumdlPlugin) {
             name: 'Fix',
             apply: (view: EditorView) => {
               view.dispatch({
-                changes: { from: fixStart, to: fixEnd, insert: fixReplacement }
+                changes: {
+                  from: utf16Offset(content, fixStart),
+                  to: utf16Offset(content, fixEnd),
+                  insert: fixReplacement
+                }
               });
             }
           });

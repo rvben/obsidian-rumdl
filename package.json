@@ -8,6 +8,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "lint": "eslint main.ts --max-warnings 0",
+    "test": "node --test",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "prepare": "husky",
     "deploy": "npm run build && node deploy.mjs"
@@ -22,6 +23,7 @@
   "license": "MIT",
   "devDependencies": {
     "@codemirror/lint": "^6.9.2",
+    "@codemirror/state": "6.5.0",
     "@codemirror/view": "^6.38.6",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
@@ -36,5 +38,8 @@
   "dependencies": {
     "fflate": "^0.8.3",
     "rumdl-wasm": "^0.3.0"
+  },
+  "overrides": {
+    "moment": "^2.31.0"
   }
 }

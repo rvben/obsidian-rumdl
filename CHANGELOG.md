@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- Preserve emoji and other supplementary Unicode characters in diagnostic positions and quick fixes.
+- Update development dependencies to address known vulnerabilities.
+
 ## [0.1.11] - 2026-09-08
 
 ### Fixed

@@ -1,0 +1,19 @@
+# Obsidian uses bare version tags; vership currently prepares the release
+# commit, while the existing bare-tag workflow publishes its assets.
+[changelog]
+curated = "replace"
+
+[checks]
+lint_command = "npm run lint && npm audit"
+test_command = "npm test && npm run build"
+
+[hooks]
+post-bump = "npm install --package-lock-only --ignore-scripts"
+
+[[artifacts]]
+command = '''npm_package_version=$(node -p "require('./package.json').version") node version-bump.mjs'''
+files = ["manifest.json", "versions.json"]
+
+[verify]
+# This plugin is distributed as GitHub release assets, not an npm package.
+skip = ["npm"]
