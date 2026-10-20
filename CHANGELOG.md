@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.1.24] - 2026-10-20
 
+### Changed
+
+- Update the bundled rumdl engine to 0.3.0.
+
 ### Fixed
 
 - Preserve emoji and other supplementary Unicode characters in diagnostic positions and quick fixes.
