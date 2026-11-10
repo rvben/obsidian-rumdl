@@ -40,6 +40,7 @@
     "rumdl-wasm": "^0.3.3"
   },
   "overrides": {
-    "moment": "^2.31.0"
+    "moment": "^2.31.0",
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
   }
 }
