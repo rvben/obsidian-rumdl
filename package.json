@@ -1,6 +1,6 @@
 {
   "name": "obsidian-rumdl",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "Markdown linting for Obsidian using rumdl",
   "main": "main.js",
   "type": "module",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.3",
-    "rumdl-wasm": "^0.3.2"
+    "rumdl-wasm": "^0.3.3"
   },
   "overrides": {
     "moment": "^2.31.0"
