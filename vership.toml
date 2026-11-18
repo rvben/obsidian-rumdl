@@ -4,7 +4,7 @@
 curated = "replace"
 
 [checks]
-lint_command = "npm run lint && npm audit"
+lint_command = "npm run lint && node scripts/audit-dependencies.mjs"
 test_command = "npm test && npm run build"
 
 [hooks]

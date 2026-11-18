@@ -93,7 +93,7 @@ jobs:
         run: npm ci
 
       - name: Audit dependencies
-        run: npm audit
+        run: node scripts/audit-dependencies.mjs
 
       - name: Build
         run: npm run build
