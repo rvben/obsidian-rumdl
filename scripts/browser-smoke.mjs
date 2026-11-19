@@ -4,13 +4,14 @@
 // synchronous WebAssembly compilation), so only a browser can show that the
 // bundle loads where it actually runs.
 //
-// Uses the Chrome that is already installed: set CHROME_BIN to choose one.
+// Uses CHROME_BIN if set, then Playwright's headless shell on macOS, then the
+// Chrome or Chromium that is already installed.
 // Expects main.js to be built (`npm run build`).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -24,8 +25,32 @@ function fail(message) {
   process.exit(1);
 }
 
+// Playwright's headless shell, newest first, if it is installed. On macOS every
+// launch of the installed Google Chrome leaves a copy of the whole app behind in
+// the system's code-signing cache; the headless shell is not a signed app
+// bundle, so it leaves nothing.
+function playwrightHeadlessShell() {
+  if (process.platform !== 'darwin') return undefined;
+  const cache = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), 'Library/Caches/ms-playwright');
+  const arch = process.arch === 'arm64' ? 'mac-arm64' : 'mac-x64';
+  let versions;
+  try {
+    versions = readdirSync(cache)
+      .map(name => /^chromium_headless_shell-(\d+)$/.exec(name))
+      .filter(Boolean)
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+  } catch {
+    return undefined;
+  }
+  return versions
+    .map(match => join(cache, match[0], `chrome-headless-shell-${arch}`, 'chrome-headless-shell'))
+    .find(path => existsSync(path));
+}
+
 function findChrome() {
   if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
+  const shell = playwrightHeadlessShell();
+  if (shell) return shell;
   const candidates = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
