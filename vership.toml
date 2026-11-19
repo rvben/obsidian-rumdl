@@ -1,5 +1,7 @@
-# Obsidian uses bare version tags; vership currently prepares the release
-# commit, while the existing bare-tag workflow publishes its assets.
+# Obsidian requires release tags to be the bare version, with no leading "v".
+[project]
+tag_prefix = ""
+
 [changelog]
 curated = "replace"
 
