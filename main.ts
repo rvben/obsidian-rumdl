@@ -2,7 +2,7 @@ import { App, Editor, FileSystemAdapter, MarkdownFileInfo, MarkdownView, Menu, M
 import init, { Linter, get_version, get_available_rules, resolve_config_chain } from 'rumdl-wasm';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
-import { inflateSync } from 'fflate';
+import { decompress } from 'fzstd';
 
 // Internal Obsidian API type for command manipulation
 interface InternalAppCommands {
@@ -101,14 +101,14 @@ function parseJson<T>(json: string): T {
   return JSON.parse(json) as T;
 }
 
-/** Decode the WASM binary that esbuild deflated and inlined into main.js. */
+/** Decode the WASM binary that esbuild compressed and inlined into main.js. */
 function embeddedWasm(): Uint8Array {
-  const deflated = atob(RUMDL_WASM_DEFLATED_BASE64);
-  const bytes = new Uint8Array(deflated.length);
-  for (let i = 0; i < deflated.length; i++) {
-    bytes[i] = deflated.charCodeAt(i);
+  const compressed = atob(RUMDL_WASM_ZSTD_BASE64);
+  const bytes = new Uint8Array(compressed.length);
+  for (let i = 0; i < compressed.length; i++) {
+    bytes[i] = compressed.charCodeAt(i);
   }
-  return inflateSync(bytes);
+  return decompress(bytes);
 }
 
 /**

@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import { deflateSync } from "fflate";
+import { compress, init as initZstd } from "@bokuweb/zstd-wasm";
 import { readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
@@ -14,14 +14,18 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = process.argv[2] === "production";
 
 // The WASM ships inside main.js because Obsidian only downloads main.js,
-// manifest.json and styles.css from a release. It is deflated first so that
+// manifest.json and styles.css from a release. It is compressed first so that
 // main.js stays below the 5 MB that Obsidian Sync's Standard plan accepts
-// (8.9 MB raw, 3.1 MB deflated, 4.2 MB as base64). fflate rather than zlib so
-// the bytes do not depend on the Node/zlib version, keeping the build
-// reproducible; the plugin inflates it with fflate at load.
+// (8.9 MB raw, 2.1 MB compressed, 2.8 MB as base64). Zstandard, because it
+// packs WASM a third tighter than deflate and decodes as fast. The compressor
+// is itself a pinned WASM build rather than Node's zlib, so the bytes do not
+// depend on the Node version and the build stays reproducible; the plugin
+// decompresses with fzstd at load.
+const ZSTD_LEVEL = 19;
 const wasmSource = join(dirname(import.meta.url.replace("file://", "")), "node_modules/rumdl-wasm/rumdl_lib_bg.wasm");
-const wasmDeflated = deflateSync(readFileSync(wasmSource), { level: 9 });
-const wasmBase64 = Buffer.from(wasmDeflated).toString("base64");
+await initZstd();
+const wasmCompressed = compress(readFileSync(wasmSource), ZSTD_LEVEL);
+const wasmBase64 = Buffer.from(wasmCompressed).toString("base64");
 
 const context = await esbuild.context({
   banner: {
@@ -56,14 +60,14 @@ const context = await esbuild.context({
   treeShaking: true,
   outfile: "main.js",
   define: {
-    // The deflated WASM as a base64 string, inlined at build time.
-    "RUMDL_WASM_DEFLATED_BASE64": JSON.stringify(wasmBase64),
+    // The compressed WASM as a base64 string, inlined at build time.
+    "RUMDL_WASM_ZSTD_BASE64": JSON.stringify(wasmBase64),
   },
 });
 
 if (prod) {
   await context.rebuild();
-  console.log(`WASM embedded in main.js (${wasmDeflated.length} bytes deflated, ${wasmBase64.length} bytes base64)`);
+  console.log(`WASM embedded in main.js (${wasmCompressed.length} bytes compressed, ${wasmBase64.length} bytes base64)`);
   process.exit(0);
 } else {
   await context.watch();

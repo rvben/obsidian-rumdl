@@ -1,6 +1,6 @@
-// The rumdl WASM binary, deflated and base64-encoded, inlined by esbuild at
-// build time (see esbuild.config.mjs).
-declare const RUMDL_WASM_DEFLATED_BASE64: string;
+// The rumdl WASM binary, Zstandard-compressed and base64-encoded, inlined by
+// esbuild at build time (see esbuild.config.mjs).
+declare const RUMDL_WASM_ZSTD_BASE64: string;
 
 // The slice of Node's builtins the plugin uses on desktop to read `extends`
 // targets outside the vault. Declared here rather than pulled in through

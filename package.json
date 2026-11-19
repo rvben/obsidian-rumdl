@@ -23,6 +23,7 @@
   "author": "rvben",
   "license": "MIT",
   "devDependencies": {
+    "@bokuweb/zstd-wasm": "0.0.27",
     "@codemirror/lint": "^6.9.2",
     "@codemirror/state": "6.5.0",
     "@codemirror/view": "^6.38.6",
@@ -37,7 +38,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "fflate": "^0.8.3",
+    "fzstd": "0.1.1",
     "rumdl-wasm": "^0.3.5"
   },
   "overrides": {
