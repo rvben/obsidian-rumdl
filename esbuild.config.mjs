@@ -16,7 +16,7 @@ const prod = process.argv[2] === "production";
 // The WASM ships inside main.js because Obsidian only downloads main.js,
 // manifest.json and styles.css from a release. It is deflated first so that
 // main.js stays below the 5 MB that Obsidian Sync's Standard plan accepts
-// (5.7 MB raw, 1.9 MB deflated, 2.5 MB as base64). fflate rather than zlib so
+// (8.9 MB raw, 3.1 MB deflated, 4.2 MB as base64). fflate rather than zlib so
 // the bytes do not depend on the Node/zlib version, keeping the build
 // reproducible; the plugin inflates it with fflate at load.
 const wasmSource = join(dirname(import.meta.url.replace("file://", "")), "node_modules/rumdl-wasm/rumdl_lib_bg.wasm");

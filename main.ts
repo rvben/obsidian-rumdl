@@ -1,5 +1,5 @@
 import { App, Editor, FileSystemAdapter, MarkdownFileInfo, MarkdownView, Menu, Modal, Notice, Platform, Plugin, PluginSettingTab, SettingDefinition, SettingDefinitionItem, TFile, normalizePath, setIcon } from 'obsidian';
-import { initSync, Linter, get_version, get_available_rules, resolve_config_chain } from 'rumdl-wasm';
+import init, { Linter, get_version, get_available_rules, resolve_config_chain } from 'rumdl-wasm';
 import { EditorView } from '@codemirror/view';
 import { linter, Diagnostic } from '@codemirror/lint';
 import { inflateSync } from 'fflate';
@@ -574,7 +574,9 @@ export default class RumdlPlugin extends Plugin {
     this.addSettingTab(this.settingTab);
 
     try {
-      initSync({ module: embeddedWasm() });
+      // Compiled asynchronously: plugins run on the renderer's main thread,
+      // where Chromium refuses synchronous compilation of a module over 8 MB.
+      await init({ module_or_path: embeddedWasm() });
 
       // Create the linter instance with configuration
       await this.createLinter();

@@ -141,6 +141,12 @@ npm run dev
 # Production build
 npm run build
 
+# Build, then run the tests against the built plugin
+npm test
+
+# Start the built plugin in a locally installed Chrome (CHROME_BIN selects one)
+npm run test:browser
+
 # Build and copy into a local vault (<vault>/.obsidian/plugins/rumdl/), then reload Obsidian
 OBSIDIAN_VAULT=~/path/to/vault npm run deploy
 ```
