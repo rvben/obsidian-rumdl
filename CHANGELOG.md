@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.31](https://github.com/rvben/obsidian-rumdl/compare/0.1.30...0.1.31) - 2026-11-19
+
 ### Changed
 
 - Shrink the plugin's `main.js` from 4.2 MB to 2.9 MB by compressing the bundled rumdl engine with Zstandard, keeping it well under Obsidian Sync's 5 MB file limit.
