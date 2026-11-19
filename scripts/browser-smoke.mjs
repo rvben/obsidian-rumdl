@@ -96,7 +96,9 @@ const browser = spawn(chrome, [
   // needs. The only page loaded is the local one served above.
   ...(process.env.CI ? ['--no-sandbox'] : []),
   url,
-], { stdio: 'ignore' });
+// Its own process group, so that the helper processes Chrome starts can be
+// stopped together with it.
+], { stdio: 'ignore', detached: true });
 
 const exited = new Promise(resolve => {
   browser.on('error', error => resolve(`could not start ${chrome}: ${error.message}`));
@@ -115,16 +117,23 @@ const outcome = await Promise.race([
 
 clearTimeout(timer);
 browser.removeAllListeners();
-// Killed outright: the profile is discarded, and a browser that stopped
-// responding must not be able to keep this script waiting.
-browser.kill('SIGKILL');
 server.close();
 server.closeAllConnections();
-await new Promise(resolve => {
-  if (browser.exitCode !== null || browser.signalCode !== null) resolve();
-  else browser.on('exit', resolve);
-});
-rmSync(profile, { recursive: true, force: true, maxRetries: 5 });
+if (browser.pid !== undefined) {
+  const stopped = new Promise(resolve => {
+    if (browser.exitCode !== null || browser.signalCode !== null) resolve();
+    else browser.on('exit', resolve);
+  });
+  // Killed outright: the profile is discarded, and a browser that stopped
+  // responding must not be able to keep this script waiting.
+  try { process.kill(-browser.pid, 'SIGKILL'); } catch { /* the group is already gone */ }
+  await stopped;
+}
+// The outcome is already known, so a profile that cannot be removed (a helper
+// may still be writing to it for a moment) is left for the system to clear.
+try {
+  rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+} catch { /* a leftover temporary directory does not change the result */ }
 
 if (outcome.error) fail(outcome.error);
 const report = JSON.parse(outcome.body);
