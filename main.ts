@@ -347,6 +347,8 @@ export default class RumdlPlugin extends Plugin {
   linter: Linter | null = null;
   private rules: RuleInfo[] | null = null;
   originalSaveCallback: ((checking: boolean) => boolean) | undefined;
+  /** Set once Obsidian has unloaded the plugin, which can happen while onload() is still pending. */
+  unloaded = false;
   configFilePath: string | null = null;
   /** Every config file the active linter was built from, root first; empty without a config file. */
   configChain: string[] = [];
@@ -568,6 +570,7 @@ export default class RumdlPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
+    if (this.unloaded) return;
 
     // Settings tab - register early so it's always available
     this.settingTab = new RumdlSettingTab(this.app, this);
@@ -578,8 +581,19 @@ export default class RumdlPlugin extends Plugin {
       // where Chromium refuses synchronous compilation of a module over 8 MB.
       await init({ module_or_path: embeddedWasm() });
 
+      // Obsidian does not wait for onload() before unloading a plugin that is
+      // disabled or reloaded during startup, and it releases the plugin's
+      // registrations only once, at that unload. Anything set up after it would
+      // stay behind for good, so startup stops at the first point after it,
+      // before the configuration is read and reported on.
+      if (this.unloaded) return;
+
       // Create the linter instance with configuration
       await this.createLinter();
+      if (this.unloaded) {
+        this.releaseLinter();
+        return;
+      }
       this.wasmReady = true;
 
       const version = get_version();
@@ -650,7 +664,13 @@ export default class RumdlPlugin extends Plugin {
   }
 
   onunload() {
+    this.unloaded = true;
+    this.wasmReady = false;
     this.restoreOriginalSave();
+    this.releaseLinter();
+  }
+
+  releaseLinter() {
     if (this.linter) {
       this.linter.free();
       this.linter = null;

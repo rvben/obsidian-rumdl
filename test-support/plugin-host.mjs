@@ -21,9 +21,36 @@ const DOCUMENT_WITHOUT_FINAL_NEWLINE = '# Title\n\nText';
  *
  * `WebAssembly` replaces the global the bundle sees, which lets a caller
  * impose a host's compilation rules.
+ *
+ * `unloadWhileStarting` unloads the plugin while onload() is still pending,
+ * as Obsidian does when the plugin is disabled or reloaded during startup:
+ * `'loading settings'` lands the unload in the first wait of onload(),
+ * `'compiling WASM'` right after the settings tab is added, before the WASM
+ * is compiled, and `'reading configuration'` while the plugin looks for its
+ * configuration file.
  */
-export async function startPlugin(code, { WebAssembly = globalThis.WebAssembly } = {}) {
-  const report = { wasmReady: false, editorExtensions: 0, lintsWithOwnLinter: false, errors: [] };
+export async function startPlugin(code, { WebAssembly = globalThis.WebAssembly, unloadWhileStarting = null } = {}) {
+  const report = {
+    wasmReady: false,
+    editorExtensions: 0,
+    lintsWithOwnLinter: false,
+    errors: [],
+    // Whether the host's save command runs the plugin's wrapper.
+    saveHookedAfterLoad: false,
+    saveHookedAfterUnload: false,
+    // What the plugin registered with the host once it had been unloaded.
+    // Obsidian releases a plugin's registrations at unload, so these outlive it.
+    registeredAfterUnload: [],
+    holdsLinterAfterUnload: false,
+    // Vault lookups the plugin started once it had been unloaded.
+    vaultReadsAfterUnload: 0,
+  };
+  const hostSave = () => true;
+  const saveCommand = { checkCallback: hostSave };
+  let unloaded = false;
+  const registers = name => {
+    if (unloaded) report.registeredAfterUnload.push(name);
+  };
   const describe = value => (value instanceof Error ? value.message : typeof value === 'string' ? value : JSON.stringify(value));
   const capturedConsole = {
     ...console,
@@ -34,20 +61,40 @@ export async function startPlugin(code, { WebAssembly = globalThis.WebAssembly }
   class Plugin {
     constructor() {
       this.app = {
-        vault: { adapter: { exists: async () => false } },
+        vault: {
+          adapter: {
+            exists: async () => {
+              if (unloaded) report.vaultReadsAfterUnload += 1;
+              // Unloads in the middle of the search for a configuration file.
+              if (unloadWhileStarting === 'reading configuration') unload(this);
+              return false;
+            },
+          },
+        },
         workspace: inert(),
-        commands: inert(),
+        commands: { commands: { 'editor:save-file': saveCommand } },
       };
       this.manifest = { dir: '' };
     }
-    async loadData() { return null; }
+    async loadData() {
+      if (unloadWhileStarting === 'loading settings') unload(this);
+      return null;
+    }
     async saveData() {}
-    addSettingTab() {}
-    addStatusBarItem() { return inert(); }
-    addCommand() {}
-    registerEvent() {}
-    registerEditorExtension() { report.editorExtensions += 1; }
+    addSettingTab() {
+      registers('setting tab');
+      if (unloadWhileStarting === 'compiling WASM') unload(this);
+    }
+    addStatusBarItem() { registers('status bar item'); return inert(); }
+    addCommand() { registers('command'); }
+    registerEvent() { registers('event'); }
+    registerEditorExtension() { registers('editor extension'); report.editorExtensions += 1; }
   }
+  const unload = plugin => {
+    if (unloaded) return;
+    unloaded = true;
+    plugin.onunload();
+  };
   const obsidian = {
     Plugin,
     PluginSettingTab: class { update() {} },
@@ -78,14 +125,17 @@ export async function startPlugin(code, { WebAssembly = globalThis.WebAssembly }
   try {
     await plugin.onload();
     report.wasmReady = plugin.wasmReady === true;
-    if (plugin.linter) {
+    report.saveHookedAfterLoad = saveCommand.checkCallback !== hostSave;
+    if (plugin.linter && !unloaded) {
       const warnings = JSON.parse(plugin.linter.check(DOCUMENT_WITHOUT_FINAL_NEWLINE));
       report.lintsWithOwnLinter = warnings.some(warning => (warning.rule_name ?? warning.rule) === 'MD047');
     }
   } catch (error) {
     report.errors.push(`onload threw: ${describe(error)}`);
   } finally {
-    try { plugin.onunload(); } catch { /* nothing to release when startup failed */ }
+    try { unload(plugin); } catch { /* nothing to release when startup failed */ }
+    report.saveHookedAfterUnload = saveCommand.checkCallback !== hostSave;
+    report.holdsLinterAfterUnload = plugin.linter != null;
   }
   return report;
 }

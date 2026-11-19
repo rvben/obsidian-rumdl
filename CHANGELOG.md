@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Stop a plugin that is disabled or reloaded while it is still starting up from leaving its format-on-save hook, commands and editor integration behind.
+
 ## [0.1.31](https://github.com/rvben/obsidian-rumdl/compare/0.1.30...0.1.31) - 2026-11-19
 
 ### Changed
