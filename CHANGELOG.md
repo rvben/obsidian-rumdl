@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.30] - 2026-11-19
+
 ### Fixed
 
 - Load the linter again in Obsidian: since the bundled rumdl engine grew past 8 MB in 0.1.29, the plugin failed at startup with "Failed to load rumdl linter".
