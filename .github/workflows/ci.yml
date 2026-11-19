@@ -28,8 +28,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      # Builds first: the startup tests run against the bundle that ships.
+      - name: Build and test
         run: npm test
 
-      - name: Build
-        run: npm run build
+      - name: Start the plugin in Chromium
+        run: npm run test:browser

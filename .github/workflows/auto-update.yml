@@ -168,14 +168,17 @@ jobs:
       # The release workflow builds the tree it releases, so this build is not
       # the one that ships. It is here to keep a broken upstream release out of
       # main: the dependency bump is about to be committed, and committing one
-      # that cannot build would leave main unbuildable for everyone.
-      - name: Build
+      # that cannot build would leave main unbuildable for everyone. The tests
+      # start the built plugin, under Node and in Chromium, because a new WASM
+      # can build cleanly and still fail to load in Obsidian.
+      - name: Build and test
         if: steps.plan.outputs.bump == 'true'
         run: |
           set -euo pipefail
           npm ci
           node scripts/audit-dependencies.mjs
-          npm run build
+          npm test
+          npm run test:browser
 
       - name: Verify build
         if: steps.plan.outputs.bump == 'true'

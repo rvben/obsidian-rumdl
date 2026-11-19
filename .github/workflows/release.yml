@@ -95,8 +95,14 @@ jobs:
       - name: Audit dependencies
         run: node scripts/audit-dependencies.mjs
 
-      - name: Build
-        run: npm run build
+      # The tests build the bundle and then start it, both under Node and on
+      # the main thread of a real Chromium. A bundle that builds can still be
+      # one Obsidian refuses to load, and nothing after this step would notice.
+      - name: Build and test
+        run: npm test
+
+      - name: Start the plugin in Chromium
+        run: npm run test:browser
 
       - name: Verify build artifacts
         run: |
